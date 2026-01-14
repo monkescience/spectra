@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -21,10 +20,10 @@ const defaultShutdownTimeout = 5 * time.Second
 
 var (
 	// ErrMissingServiceName is returned when ServiceName is not configured.
-	ErrMissingServiceName = errors.New("service name is required (set via option or OTEL_SERVICE_NAME env var)")
+	ErrMissingServiceName = errors.New("service name is required")
 
 	// ErrMissingEndpoint is returned when Endpoint is not configured.
-	ErrMissingEndpoint = errors.New("endpoint is required (set via option or OTEL_EXPORTER_OTLP_ENDPOINT env var)")
+	ErrMissingEndpoint = errors.New("endpoint is required")
 )
 
 // config holds configuration for spectra initialization.
@@ -197,18 +196,10 @@ func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*met
 	}, nil
 }
 
-// validateConfig fills in values from env vars and validates required fields.
+// validateConfig validates required fields and sets defaults.
 func validateConfig(cfg config) (config, error) {
 	if cfg.ServiceName == "" {
-		cfg.ServiceName = os.Getenv("OTEL_SERVICE_NAME")
-	}
-
-	if cfg.ServiceName == "" {
 		return cfg, ErrMissingServiceName
-	}
-
-	if cfg.Endpoint == "" {
-		cfg.Endpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	}
 
 	if cfg.Endpoint == "" {

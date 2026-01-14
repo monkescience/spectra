@@ -95,17 +95,15 @@ func TestWithFixtures(t *testing.T) {
 
 ## Configuration
 
-Configuration via functional options or standard OTEL environment variables:
-
-| Option | Env Variable | Description |
-|--------|--------------|-------------|
-| `WithServiceName(name)` | `OTEL_SERVICE_NAME` | Service name for telemetry (required) |
-| `WithEndpoint(endpoint)` | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector endpoint (required) |
-| `WithInsecure()` | - | Disable TLS for local development |
-| `WithShutdownTimeout(d)` | - | Graceful shutdown timeout (default: 5s) |
-| `WithoutTraces()` | - | Disable trace collection |
-| `WithoutMetrics()` | - | Disable metrics collection |
-| `WithoutLogs()` | - | Disable log capture as span events |
+| Option | Description |
+|--------|-------------|
+| `WithServiceName(name)` | Service name for telemetry (required) |
+| `WithEndpoint(endpoint)` | OTLP collector endpoint (required) |
+| `WithInsecure()` | Disable TLS for local development |
+| `WithShutdownTimeout(d)` | Graceful shutdown timeout (default: 5s) |
+| `WithoutTraces()` | Disable trace collection |
+| `WithoutMetrics()` | Disable metrics collection |
+| `WithoutLogs()` | Disable log capture as span events |
 
 ## Telemetry
 
