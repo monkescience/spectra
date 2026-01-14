@@ -2,6 +2,8 @@ package spectra
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -16,6 +18,14 @@ import (
 )
 
 const defaultShutdownTimeout = 5 * time.Second
+
+var (
+	// ErrMissingServiceName is returned when ServiceName is not configured.
+	ErrMissingServiceName = errors.New("service name is required (set via option or OTEL_SERVICE_NAME env var)")
+
+	// ErrMissingEndpoint is returned when Endpoint is not configured.
+	ErrMissingEndpoint = errors.New("endpoint is required (set via option or OTEL_EXPORTER_OTLP_ENDPOINT env var)")
+)
 
 // config holds configuration for spectra initialization.
 type config struct {
@@ -54,20 +64,27 @@ var globalConfig config //nolint:gochecknoglobals // config needs to be accessib
 // Example:
 //
 //	func TestMain(m *testing.M) {
-//	    shutdown := spectra.Init(
+//	    shutdown, err := spectra.Init(
 //	        spectra.WithServiceName("my-service-tests"),
 //	        spectra.WithEndpoint("localhost:4317"),
 //	    )
+//	    if err != nil {
+//	        log.Fatalf("spectra init: %v", err)
+//	    }
 //	    defer shutdown()
 //	    os.Exit(m.Run())
 //	}
-func Init(opts ...Option) func() {
+func Init(opts ...Option) (func(), error) {
 	cfg := config{}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	cfg = validateConfig(cfg)
+	cfg, err := validateConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	globalConfig = cfg
 
 	ctx := context.Background()
@@ -76,11 +93,17 @@ func Init(opts ...Option) func() {
 	var traceShutdown, metricShutdown func()
 
 	if !cfg.DisableTraces {
-		_, traceShutdown = setupTracing(ctx, cfg, res)
+		_, traceShutdown, err = setupTracing(ctx, cfg, res)
+		if err != nil {
+			return nil, fmt.Errorf("setup tracing: %w", err)
+		}
 	}
 
 	if !cfg.DisableMetrics {
-		_, metricShutdown = setupMetrics(ctx, cfg, res)
+		_, metricShutdown, err = setupMetrics(ctx, cfg, res)
+		if err != nil {
+			return nil, fmt.Errorf("setup metrics: %w", err)
+		}
 	}
 
 	return func() {
@@ -91,7 +114,7 @@ func Init(opts ...Option) func() {
 		if metricShutdown != nil {
 			metricShutdown()
 		}
-	}
+	}, nil
 }
 
 // createResource creates the OTEL resource with service info.
@@ -112,7 +135,7 @@ func createResource(cfg config) *resource.Resource {
 }
 
 // setupTracing configures the trace provider and returns a shutdown function.
-func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdktrace.TracerProvider, func()) {
+func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdktrace.TracerProvider, func(), error) {
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.Endpoint),
 	}
@@ -123,7 +146,7 @@ func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdk
 
 	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
-		return nil, nil
+		return nil, nil, fmt.Errorf("create trace exporter: %w", err)
 	}
 
 	tp := sdktrace.NewTracerProvider(
@@ -139,11 +162,11 @@ func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdk
 		defer cancel()
 
 		_ = tp.Shutdown(shutdownCtx)
-	}
+	}, nil
 }
 
 // setupMetrics configures the meter provider and returns a shutdown function.
-func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*metric.MeterProvider, func()) {
+func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*metric.MeterProvider, func(), error) {
 	opts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(cfg.Endpoint),
 	}
@@ -154,7 +177,7 @@ func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*met
 
 	exporter, err := otlpmetricgrpc.New(ctx, opts...)
 	if err != nil {
-		return nil, nil
+		return nil, nil, fmt.Errorf("create metric exporter: %w", err)
 	}
 
 	mp := metric.NewMeterProvider(
@@ -171,17 +194,17 @@ func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*met
 		defer cancel()
 
 		_ = mp.Shutdown(shutdownCtx)
-	}
+	}, nil
 }
 
 // validateConfig fills in values from env vars and validates required fields.
-func validateConfig(cfg config) config {
+func validateConfig(cfg config) (config, error) {
 	if cfg.ServiceName == "" {
 		cfg.ServiceName = os.Getenv("OTEL_SERVICE_NAME")
 	}
 
 	if cfg.ServiceName == "" {
-		panic("spectra: ServiceName is required (set via config or OTEL_SERVICE_NAME env var)")
+		return cfg, ErrMissingServiceName
 	}
 
 	if cfg.Endpoint == "" {
@@ -189,12 +212,12 @@ func validateConfig(cfg config) config {
 	}
 
 	if cfg.Endpoint == "" {
-		panic("spectra: Endpoint is required (set via config or OTEL_EXPORTER_OTLP_ENDPOINT env var)")
+		return cfg, ErrMissingEndpoint
 	}
 
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = defaultShutdownTimeout
 	}
 
-	return cfg
+	return cfg, nil
 }
