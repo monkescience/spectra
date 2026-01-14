@@ -25,8 +25,8 @@ go get github.com/monkescience/spectra
 func TestMain(m *testing.M) {
     shutdown, err := spectra.Init(
         spectra.WithServiceName("my-service-tests"),
-        spectra.WithEndpoint("localhost:4317"),
-        spectra.WithInsecure(), // for local development
+        spectra.WithEndpoint("grpc://localhost:4317"),
+        spectra.WithInsecure(), // skip TLS verification
     )
     if err != nil {
         log.Fatalf("spectra init: %v", err)
@@ -98,12 +98,22 @@ func TestWithFixtures(t *testing.T) {
 | Option | Description |
 |--------|-------------|
 | `WithServiceName(name)` | Service name for telemetry (required) |
-| `WithEndpoint(endpoint)` | OTLP collector endpoint (required) |
-| `WithInsecure()` | Disable TLS for local development |
+| `WithEndpoint(endpoint)` | OTLP collector endpoint with scheme (required) |
+| `WithInsecure()` | gRPC: disable TLS; HTTPS: skip cert verification |
 | `WithShutdownTimeout(d)` | Graceful shutdown timeout (default: 5s) |
 | `WithoutTraces()` | Disable trace collection |
 | `WithoutMetrics()` | Disable metrics collection |
 | `WithoutLogs()` | Disable log capture as span events |
+
+### Endpoint Format
+
+The endpoint must include a scheme:
+
+| Scheme | Protocol | TLS |
+|--------|----------|-----|
+| `grpc://host:port` | gRPC | Yes (use `WithInsecure()` to disable) |
+| `http://host:port` | HTTP | No |
+| `https://host:port` | HTTPS | Yes (use `WithInsecure()` to skip cert verification) |
 
 ## Telemetry
 

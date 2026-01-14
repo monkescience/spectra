@@ -2,13 +2,17 @@ package spectra
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -24,7 +28,31 @@ var (
 
 	// ErrMissingEndpoint is returned when Endpoint is not configured.
 	ErrMissingEndpoint = errors.New("endpoint is required")
+
+	// ErrInvalidEndpoint is returned when endpoint doesn't have a valid scheme.
+	ErrInvalidEndpoint = errors.New("endpoint must have scheme (grpc://, http://, or https://)")
 )
+
+type protocol int
+
+const (
+	protocolGRPC protocol = iota
+	protocolHTTP
+	protocolHTTPS
+)
+
+func parseProtocol(endpoint string) (protocol, string, error) {
+	switch {
+	case strings.HasPrefix(endpoint, "grpc://"):
+		return protocolGRPC, strings.TrimPrefix(endpoint, "grpc://"), nil
+	case strings.HasPrefix(endpoint, "http://"):
+		return protocolHTTP, strings.TrimPrefix(endpoint, "http://"), nil
+	case strings.HasPrefix(endpoint, "https://"):
+		return protocolHTTPS, strings.TrimPrefix(endpoint, "https://"), nil
+	default:
+		return 0, "", ErrInvalidEndpoint
+	}
+}
 
 // config holds configuration for spectra initialization.
 type config struct {
@@ -58,14 +86,17 @@ var globalConfig config //nolint:gochecknoglobals // config needs to be accessib
 // Init initializes OpenTelemetry providers for test instrumentation.
 // It returns a shutdown function that should be deferred in TestMain.
 //
-// ServiceName and Endpoint are required (either via options or env vars).
+// ServiceName and Endpoint are required. Endpoint must include a scheme:
+//   - grpc://host:port - gRPC protocol
+//   - http://host:port - HTTP protocol (no TLS)
+//   - https://host:port - HTTPS protocol (TLS)
 //
 // Example:
 //
 //	func TestMain(m *testing.M) {
 //	    shutdown, err := spectra.Init(
 //	        spectra.WithServiceName("my-service-tests"),
-//	        spectra.WithEndpoint("localhost:4317"),
+//	        spectra.WithEndpoint("grpc://localhost:4317"),
 //	    )
 //	    if err != nil {
 //	        log.Fatalf("spectra init: %v", err)
@@ -135,15 +166,37 @@ func createResource(cfg config) *resource.Resource {
 
 // setupTracing configures the trace provider and returns a shutdown function.
 func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdktrace.TracerProvider, func(), error) {
-	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(cfg.Endpoint),
+	proto, endpoint, err := parseProtocol(cfg.Endpoint)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	if cfg.Insecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
+	var exporter sdktrace.SpanExporter
+
+	switch proto {
+	case protocolHTTP:
+		exporter, err = otlptracehttp.New(ctx,
+			otlptracehttp.WithEndpoint(endpoint),
+			otlptracehttp.WithInsecure(),
+		)
+	case protocolHTTPS:
+		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(endpoint)}
+		if cfg.Insecure {
+			opts = append(opts, otlptracehttp.WithTLSClientConfig(&tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // User explicitly requested insecure mode.
+			}))
+		}
+
+		exporter, err = otlptracehttp.New(ctx, opts...)
+	case protocolGRPC:
+		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
+		if cfg.Insecure {
+			opts = append(opts, otlptracegrpc.WithInsecure())
+		}
+
+		exporter, err = otlptracegrpc.New(ctx, opts...)
 	}
 
-	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create trace exporter: %w", err)
 	}
@@ -166,15 +219,37 @@ func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdk
 
 // setupMetrics configures the meter provider and returns a shutdown function.
 func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*metric.MeterProvider, func(), error) {
-	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithEndpoint(cfg.Endpoint),
+	proto, endpoint, err := parseProtocol(cfg.Endpoint)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	if cfg.Insecure {
-		opts = append(opts, otlpmetricgrpc.WithInsecure())
+	var exporter metric.Exporter
+
+	switch proto {
+	case protocolHTTP:
+		exporter, err = otlpmetrichttp.New(ctx,
+			otlpmetrichttp.WithEndpoint(endpoint),
+			otlpmetrichttp.WithInsecure(),
+		)
+	case protocolHTTPS:
+		opts := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(endpoint)}
+		if cfg.Insecure {
+			opts = append(opts, otlpmetrichttp.WithTLSClientConfig(&tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // User explicitly requested insecure mode.
+			}))
+		}
+
+		exporter, err = otlpmetrichttp.New(ctx, opts...)
+	case protocolGRPC:
+		opts := []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(endpoint)}
+		if cfg.Insecure {
+			opts = append(opts, otlpmetricgrpc.WithInsecure())
+		}
+
+		exporter, err = otlpmetricgrpc.New(ctx, opts...)
 	}
 
-	exporter, err := otlpmetricgrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create metric exporter: %w", err)
 	}
