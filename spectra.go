@@ -110,20 +110,26 @@ func (t *T) AddEvent(name string, attrs ...attribute.KeyValue) {
 func (t *T) Log(args ...any) {
 	t.Helper()
 	t.TB.Log(args...)
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatArgs(args...)),
-		attribute.String("level", "info"),
-	))
+
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatArgs(args...)),
+			attribute.String("level", "info"),
+		))
+	}
 }
 
 // Logf logs a formatted message and records it as a span event.
 func (t *T) Logf(format string, args ...any) {
 	t.Helper()
 	t.TB.Logf(format, args...)
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatf(format, args...)),
-		attribute.String("level", "info"),
-	))
+
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatf(format, args...)),
+			attribute.String("level", "info"),
+		))
+	}
 }
 
 // Error logs an error and records it as a span event.
@@ -135,10 +141,13 @@ func (t *T) Error(args ...any) {
 	t.mu.Unlock()
 
 	t.TB.Error(args...)
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatArgs(args...)),
-		attribute.String("level", "error"),
-	))
+
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatArgs(args...)),
+			attribute.String("level", "error"),
+		))
+	}
 }
 
 // Errorf logs a formatted error and records it as a span event.
@@ -150,10 +159,13 @@ func (t *T) Errorf(format string, args ...any) {
 	t.mu.Unlock()
 
 	t.TB.Errorf(format, args...)
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatf(format, args...)),
-		attribute.String("level", "error"),
-	))
+
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatf(format, args...)),
+			attribute.String("level", "error"),
+		))
+	}
 }
 
 // Fatal logs a fatal error and records it as a span event.
@@ -164,10 +176,13 @@ func (t *T) Fatal(args ...any) {
 	t.failed = true
 	t.mu.Unlock()
 
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatArgs(args...)),
-		attribute.String("level", "fatal"),
-	))
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatArgs(args...)),
+			attribute.String("level", "fatal"),
+		))
+	}
+
 	t.span.SetStatus(codes.Error, "test fatal")
 	t.TB.Fatal(args...)
 }
@@ -180,10 +195,13 @@ func (t *T) Fatalf(format string, args ...any) {
 	t.failed = true
 	t.mu.Unlock()
 
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatf(format, args...)),
-		attribute.String("level", "fatal"),
-	))
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatf(format, args...)),
+			attribute.String("level", "fatal"),
+		))
+	}
+
 	t.span.SetStatus(codes.Error, "test fatal")
 	t.TB.Fatalf(format, args...)
 }
@@ -191,10 +209,14 @@ func (t *T) Fatalf(format string, args ...any) {
 // Skip logs a skip message and records it as a span event.
 func (t *T) Skip(args ...any) {
 	t.Helper()
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatArgs(args...)),
-		attribute.String("level", "skip"),
-	))
+
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatArgs(args...)),
+			attribute.String("level", "skip"),
+		))
+	}
+
 	t.span.SetStatus(codes.Ok, "test skipped")
 	t.TB.Skip(args...)
 }
@@ -202,10 +224,14 @@ func (t *T) Skip(args ...any) {
 // Skipf logs a formatted skip message and records it as a span event.
 func (t *T) Skipf(format string, args ...any) {
 	t.Helper()
-	t.span.AddEvent("log", trace.WithAttributes(
-		attribute.String("message", formatf(format, args...)),
-		attribute.String("level", "skip"),
-	))
+
+	if !globalConfig.DisableLogs {
+		t.span.AddEvent("log", trace.WithAttributes(
+			attribute.String("message", formatf(format, args...)),
+			attribute.String("level", "skip"),
+		))
+	}
+
 	t.span.SetStatus(codes.Ok, "test skipped")
 	t.TB.Skipf(format, args...)
 }

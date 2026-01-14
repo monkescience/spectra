@@ -414,11 +414,11 @@ func TestInit(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown := spectra.Init(spectra.Config{
-		ServiceName: "test-service",
-		Endpoint:    "localhost:4317",
-		Insecure:    true,
-	})
+	shutdown := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("localhost:4317"),
+		spectra.WithInsecure(),
+	)
 
 	// then - should return a valid shutdown function.
 	if shutdown == nil {
@@ -427,4 +427,75 @@ func TestInit(t *testing.T) {
 
 	// Cleanup.
 	shutdown()
+}
+
+func TestInit_DisableTraces(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given/when
+	shutdown := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("localhost:4317"),
+		spectra.WithoutTraces(),
+	)
+
+	// then - should return a valid shutdown function even with traces disabled.
+	if shutdown == nil {
+		t.Error("expected non-nil shutdown function")
+	}
+
+	shutdown()
+}
+
+func TestInit_DisableMetrics(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given/when
+	shutdown := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("localhost:4317"),
+		spectra.WithoutMetrics(),
+	)
+
+	// then - should return a valid shutdown function even with metrics disabled.
+	if shutdown == nil {
+		t.Error("expected non-nil shutdown function")
+	}
+
+	shutdown()
+}
+
+func TestInit_DisableLogs(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := setupTestTracer(t)
+
+	shutdown := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("localhost:4317"),
+		spectra.WithoutLogs(),
+	)
+	defer shutdown()
+
+	// when
+	t.Run("logs_disabled", func(innerT *testing.T) {
+		st := spectra.New(innerT)
+		st.Log("this should not appear as span event")
+	})
+
+	// then - span should exist but without log events.
+	spans := exporter.GetSpans()
+
+	for _, s := range spans {
+		if s.Name == "TestInit_DisableLogs/logs_disabled" {
+			for _, event := range s.Events {
+				if event.Name == "log" {
+					t.Error("expected no log events when DisableLogs is true")
+				}
+			}
+
+			return
+		}
+	}
 }

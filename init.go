@@ -15,53 +15,78 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-const (
-	defaultServiceName = "test-service"
-	defaultEndpoint    = "localhost:4317"
-	shutdownTimeout    = 5 * time.Second
-)
+const defaultShutdownTimeout = 5 * time.Second
 
-// Config holds configuration for spectra initialization.
-type Config struct {
-	// ServiceName is the name of the service for telemetry.
-	// Defaults to "test-service" or OTEL_SERVICE_NAME env var.
+// config holds configuration for spectra initialization.
+type config struct {
+	// ServiceName is the name of the service for telemetry. Required.
+	// Can also be set via OTEL_SERVICE_NAME env var.
 	ServiceName string
 
-	// Endpoint is the OTLP collector endpoint.
-	// Defaults to "localhost:4317" or OTEL_EXPORTER_OTLP_ENDPOINT env var.
+	// Endpoint is the OTLP collector endpoint. Required.
+	// Can also be set via OTEL_EXPORTER_OTLP_ENDPOINT env var.
 	Endpoint string
 
 	// Insecure disables TLS for the OTLP exporter.
-	// Defaults to true for local development.
 	Insecure bool
+
+	// ShutdownTimeout is the timeout for graceful shutdown.
+	// Defaults to 5 seconds.
+	ShutdownTimeout time.Duration
+
+	// DisableTraces disables trace collection.
+	DisableTraces bool
+
+	// DisableMetrics disables metrics collection.
+	DisableMetrics bool
+
+	// DisableLogs disables log capture as span events.
+	DisableLogs bool
 }
+
+var globalConfig config //nolint:gochecknoglobals // config needs to be accessible from T methods.
 
 // Init initializes OpenTelemetry providers for test instrumentation.
 // It returns a shutdown function that should be deferred in TestMain.
 //
+// ServiceName and Endpoint are required (either via options or env vars).
+//
 // Example:
 //
 //	func TestMain(m *testing.M) {
-//	    shutdown := spectra.Init(spectra.Config{
-//	        ServiceName: "my-service-tests",
-//	    })
+//	    shutdown := spectra.Init(
+//	        spectra.WithServiceName("my-service-tests"),
+//	        spectra.WithEndpoint("localhost:4317"),
+//	    )
 //	    defer shutdown()
 //	    os.Exit(m.Run())
 //	}
-func Init(cfg Config) func() {
-	cfg = applyDefaults(cfg)
+func Init(opts ...Option) func() {
+	cfg := config{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	cfg = validateConfig(cfg)
+	globalConfig = cfg
+
 	ctx := context.Background()
 	res := createResource(cfg)
 
-	tp, traceShutdown := setupTracing(ctx, cfg, res)
-	if tp == nil {
-		return func() {}
+	var traceShutdown, metricShutdown func()
+
+	if !cfg.DisableTraces {
+		_, traceShutdown = setupTracing(ctx, cfg, res)
 	}
 
-	_, metricShutdown := setupMetrics(ctx, cfg, res)
+	if !cfg.DisableMetrics {
+		_, metricShutdown = setupMetrics(ctx, cfg, res)
+	}
 
 	return func() {
-		traceShutdown()
+		if traceShutdown != nil {
+			traceShutdown()
+		}
 
 		if metricShutdown != nil {
 			metricShutdown()
@@ -70,7 +95,7 @@ func Init(cfg Config) func() {
 }
 
 // createResource creates the OTEL resource with service info.
-func createResource(cfg Config) *resource.Resource {
+func createResource(cfg config) *resource.Resource {
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
@@ -87,7 +112,7 @@ func createResource(cfg Config) *resource.Resource {
 }
 
 // setupTracing configures the trace provider and returns a shutdown function.
-func setupTracing(ctx context.Context, cfg Config, res *resource.Resource) (*sdktrace.TracerProvider, func()) {
+func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdktrace.TracerProvider, func()) {
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.Endpoint),
 	}
@@ -110,7 +135,7 @@ func setupTracing(ctx context.Context, cfg Config, res *resource.Resource) (*sdk
 
 	//nolint:contextcheck // Shutdown uses fresh context with timeout, not the init context.
 	return tp, func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
 		_ = tp.Shutdown(shutdownCtx)
@@ -118,7 +143,7 @@ func setupTracing(ctx context.Context, cfg Config, res *resource.Resource) (*sdk
 }
 
 // setupMetrics configures the meter provider and returns a shutdown function.
-func setupMetrics(ctx context.Context, cfg Config, res *resource.Resource) (*metric.MeterProvider, func()) {
+func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*metric.MeterProvider, func()) {
 	opts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(cfg.Endpoint),
 	}
@@ -142,32 +167,33 @@ func setupMetrics(ctx context.Context, cfg Config, res *resource.Resource) (*met
 
 	//nolint:contextcheck // Shutdown uses fresh context with timeout, not the init context.
 	return mp, func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
 		_ = mp.Shutdown(shutdownCtx)
 	}
 }
 
-// applyDefaults fills in default values for the config.
-func applyDefaults(cfg Config) Config {
+// validateConfig fills in values from env vars and validates required fields.
+func validateConfig(cfg config) config {
 	if cfg.ServiceName == "" {
 		cfg.ServiceName = os.Getenv("OTEL_SERVICE_NAME")
-		if cfg.ServiceName == "" {
-			cfg.ServiceName = defaultServiceName
-		}
+	}
+
+	if cfg.ServiceName == "" {
+		panic("spectra: ServiceName is required (set via config or OTEL_SERVICE_NAME env var)")
 	}
 
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-		if cfg.Endpoint == "" {
-			cfg.Endpoint = defaultEndpoint
-		}
 	}
 
-	// Default to insecure for local development.
-	if !cfg.Insecure {
-		cfg.Insecure = true
+	if cfg.Endpoint == "" {
+		panic("spectra: Endpoint is required (set via config or OTEL_EXPORTER_OTLP_ENDPOINT env var)")
+	}
+
+	if cfg.ShutdownTimeout == 0 {
+		cfg.ShutdownTimeout = defaultShutdownTimeout
 	}
 
 	return cfg
