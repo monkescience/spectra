@@ -33,12 +33,12 @@ var (
 	ErrInvalidEndpoint = errors.New("endpoint must have scheme (grpc://, http://, or https://)")
 )
 
-type protocol int
+type protocol string
 
 const (
-	protocolGRPC protocol = iota
-	protocolHTTP
-	protocolHTTPS
+	protocolGRPC  protocol = "grpc"
+	protocolHTTP  protocol = "http"
+	protocolHTTPS protocol = "https"
 )
 
 func parseProtocol(endpoint string) (protocol, string, error) {
@@ -50,7 +50,7 @@ func parseProtocol(endpoint string) (protocol, string, error) {
 	case strings.HasPrefix(endpoint, "https://"):
 		return protocolHTTPS, strings.TrimPrefix(endpoint, "https://"), nil
 	default:
-		return 0, "", ErrInvalidEndpoint
+		return "", "", ErrInvalidEndpoint
 	}
 }
 
