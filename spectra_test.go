@@ -28,6 +28,44 @@ func setupTestTracer(t *testing.T) *tracetest.InMemoryExporter {
 	return exporter
 }
 
+// mockTB is a mock testing.TB that doesn't actually fail tests.
+type mockTB struct {
+	testing.TB
+	name     string
+	cleanups []func()
+	failed   bool
+	skipped  bool
+}
+
+func newMockTB(name string) *mockTB {
+	return &mockTB{name: name}
+}
+
+func (m *mockTB) Name() string              { return m.name }
+func (m *mockTB) Helper()                   {}
+func (m *mockTB) Log(_ ...any)              {}
+func (m *mockTB) Logf(_ string, _ ...any)   {}
+func (m *mockTB) Error(_ ...any)            { m.failed = true }
+func (m *mockTB) Errorf(_ string, _ ...any) { m.failed = true }
+func (m *mockTB) Fatal(_ ...any)            { m.failed = true }
+func (m *mockTB) Fatalf(_ string, _ ...any) { m.failed = true }
+func (m *mockTB) Skip(_ ...any)             { m.skipped = true }
+func (m *mockTB) Skipf(_ string, _ ...any)  { m.skipped = true }
+func (m *mockTB) Failed() bool              { return m.failed }
+func (m *mockTB) Skipped() bool             { return m.skipped }
+func (m *mockTB) Cleanup(f func())          { m.cleanups = append(m.cleanups, f) }
+func (m *mockTB) TempDir() string           { return "" }
+func (m *mockTB) Setenv(_ string, _ string) {}
+func (m *mockTB) FailNow()                  { m.failed = true }
+func (m *mockTB) Fail()                     { m.failed = true }
+func (m *mockTB) SkipNow()                  { m.skipped = true }
+
+func (m *mockTB) runCleanups() {
+	for i := len(m.cleanups) - 1; i >= 0; i-- {
+		m.cleanups[i]()
+	}
+}
+
 func TestNew(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
@@ -408,6 +446,245 @@ func TestT_SpanStatus_Pass(t *testing.T) {
 	if !found {
 		t.Error("expected span with Ok status not found")
 	}
+}
+
+func TestT_Error(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := setupTestTracer(t)
+	mock := newMockTB("TestT_Error")
+
+	// when
+	st := spectra.New(mock)
+	st.Error("test error message")
+	st.Errorf("formatted error: %s", "details")
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_Error" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	errorEvents := 0
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "level" && attr.Value.AsString() == "error" {
+					errorEvents++
+				}
+			}
+		}
+	}
+
+	if errorEvents < 2 {
+		t.Errorf("expected at least 2 error events, got %d", errorEvents)
+	}
+
+	if !mock.failed {
+		t.Error("expected mock to be marked as failed")
+	}
+}
+
+func TestT_Fatal(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := setupTestTracer(t)
+	mock := newMockTB("TestT_Fatal")
+
+	// when
+	st := spectra.New(mock)
+	st.Fatal("fatal error")
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_Fatal" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	fatalFound := false
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "level" && attr.Value.AsString() == "fatal" {
+					fatalFound = true
+				}
+			}
+		}
+	}
+
+	if !fatalFound {
+		t.Error("expected fatal log event not found")
+	}
+
+	if targetSpan.Status.Code != codes.Error {
+		t.Error("expected span status to be Error")
+	}
+}
+
+func TestT_Fatalf(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := setupTestTracer(t)
+	mock := newMockTB("TestT_Fatalf")
+
+	// when
+	st := spectra.New(mock)
+	st.Fatalf("fatal error: %s", "formatted")
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_Fatalf" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	fatalFound := false
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "level" && attr.Value.AsString() == "fatal" {
+					fatalFound = true
+				}
+			}
+		}
+	}
+
+	if !fatalFound {
+		t.Error("expected fatal log event not found")
+	}
+}
+
+func TestT_Skip(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := setupTestTracer(t)
+	mock := newMockTB("TestT_Skip")
+
+	// when
+	st := spectra.New(mock)
+	st.Skip("skipping test")
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_Skip" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	skipFound := false
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "level" && attr.Value.AsString() == "skip" {
+					skipFound = true
+				}
+			}
+		}
+	}
+
+	if !skipFound {
+		t.Error("expected skip log event not found")
+	}
+
+	if !mock.skipped {
+		t.Error("expected mock to be marked as skipped")
+	}
+}
+
+func TestT_Skipf(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := setupTestTracer(t)
+	mock := newMockTB("TestT_Skipf")
+
+	// when
+	st := spectra.New(mock)
+	st.Skipf("skipping: %s", "reason")
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_Skipf" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	skipFound := false
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "level" && attr.Value.AsString() == "skip" {
+					skipFound = true
+				}
+			}
+		}
+	}
+
+	if !skipFound {
+		t.Error("expected skip log event not found")
+	}
+}
+
+func TestT_Parallel(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	_ = setupTestTracer(t)
+
+	// when - run in subtest with Parallel.
+	t.Run("parallel_test", func(innerT *testing.T) {
+		st := spectra.New(innerT)
+		st.Parallel()
+		st.Log("running in parallel")
+	})
+
+	// then - test passes if no panic occurred.
 }
 
 func TestInit(t *testing.T) {
