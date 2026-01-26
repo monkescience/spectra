@@ -310,3 +310,25 @@ func (t *T) Skipf(format string, args ...any) {
 	t.span.SetStatus(codes.Ok, "test skipped")
 	t.tb.Skipf(format, args...)
 }
+
+// FailNow marks the test as failed and stops its execution.
+func (t *T) FailNow() {
+	t.Helper()
+
+	t.setFailed()
+
+	t.recordLog("test failed", levelFatal)
+
+	t.span.SetStatus(codes.Error, "test failed")
+	t.tb.FailNow()
+}
+
+// SkipNow marks the test as skipped and stops its execution.
+func (t *T) SkipNow() {
+	t.Helper()
+
+	t.recordLog("test skipped", levelSkip)
+
+	t.span.SetStatus(codes.Ok, "test skipped")
+	t.tb.SkipNow()
+}

@@ -1030,3 +1030,113 @@ func TestInitMetrics(t *testing.T) {
 
 	defer sp.Shutdown()
 }
+
+func TestT_FailNow(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter, sp := setupTestTracer(t)
+	mock := newMockTB("TestT_FailNow")
+
+	// when
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
+	st.FailNow()
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_FailNow" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	if targetSpan.Status.Code != codes.Error {
+		t.Errorf("expected span status Error, got %v", targetSpan.Status.Code)
+	}
+
+	failNowFound := false
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "message" && attr.Value.AsString() == "test failed" {
+					failNowFound = true
+
+					break
+				}
+			}
+		}
+	}
+
+	if !failNowFound {
+		t.Error("expected log event with 'test failed' message not found")
+	}
+
+	if !mock.failed {
+		t.Error("expected mock.failed to be true after FailNow()")
+	}
+}
+
+func TestT_SkipNow(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter, sp := setupTestTracer(t)
+	mock := newMockTB("TestT_SkipNow")
+
+	// when
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
+	st.SkipNow()
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+
+	var targetSpan tracetest.SpanStub
+
+	for _, s := range spans {
+		if s.Name == "TestT_SkipNow" {
+			targetSpan = s
+
+			break
+		}
+	}
+
+	if targetSpan.Status.Code != codes.Ok {
+		t.Errorf("expected span status Ok, got %v", targetSpan.Status.Code)
+	}
+
+	skipNowFound := false
+
+	for _, event := range targetSpan.Events {
+		if event.Name == "log" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "message" && attr.Value.AsString() == "test skipped" {
+					skipNowFound = true
+
+					break
+				}
+			}
+		}
+	}
+
+	if !skipNowFound {
+		t.Error("expected log event with 'test skipped' message not found")
+	}
+
+	if !mock.skipped {
+		t.Error("expected mock.skipped to be true after SkipNow()")
+	}
+}
