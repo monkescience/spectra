@@ -11,6 +11,17 @@ OpenTelemetry instrumentation for Go tests. Make your tests observable and trace
 - Manual span creation for operations under test
 - OTLP export to any compatible collector
 
+## Breaking Changes in v2
+
+**v2 introduces a new dependency injection API that requires code changes:**
+
+- `spectra.Init()` now returns `(*Spectra, error)` instead of `(func(), error)`
+- Call `sp.Shutdown()` instead of `shutdown()` for cleanup
+- `spectra.New(t)` is now `sp.New(t)` and returns `(*T, error)` instead of `*T`
+- Must check error from `sp.New(t)` before using the returned `*T`
+
+See the usage examples below for the new patterns.
+
 ## Installation
 
 ```bash
@@ -23,7 +34,7 @@ go get github.com/monkescience/spectra
 
 ```go
 func TestMain(m *testing.M) {
-    shutdown, err := spectra.Init(
+    sp, err := spectra.Init(
         spectra.WithServiceName("my-service-tests"),
         spectra.WithEndpoint("grpc://localhost:4317"),
         spectra.WithInsecure(), // skip TLS verification
@@ -31,7 +42,7 @@ func TestMain(m *testing.M) {
     if err != nil {
         log.Fatalf("spectra init: %v", err)
     }
-    defer shutdown()
+    defer sp.Shutdown()
 
     os.Exit(m.Run())
 }
@@ -41,7 +52,10 @@ func TestMain(m *testing.M) {
 
 ```go
 func TestFeature(t *testing.T) {
-    st := spectra.New(t)
+    st, err := sp.New(t)
+    if err != nil {
+        t.Fatalf("spectra: %v", err)
+    }
 
     // Logs are captured as span events
     st.Log("starting test")
@@ -60,7 +74,10 @@ func TestFeature(t *testing.T) {
 
 ```go
 func TestDatabaseQuery(t *testing.T) {
-    st := spectra.New(t)
+    st, err := sp.New(t)
+    if err != nil {
+        t.Fatalf("spectra: %v", err)
+    }
 
     // Create child span for the operation you're testing
     ctx, span := st.StartSpan("db-query")
@@ -75,7 +92,10 @@ func TestDatabaseQuery(t *testing.T) {
 
 ```go
 func TestWithFixtures(t *testing.T) {
-    st := spectra.New(t)
+    st, err := sp.New(t)
+    if err != nil {
+        t.Fatalf("spectra: %v", err)
+    }
 
     // Setup gets its own span
     st.Setup(func(ctx context.Context) {
@@ -115,11 +135,20 @@ The endpoint must include a scheme:
 | `http://host:port` | HTTP | No |
 | `https://host:port` | HTTPS | Yes (use `WithInsecure()` to skip cert verification) |
 
+## Error Handling
+
+Spectra returns errors in the following cases:
+
+| Error | When | Resolution |
+|-------|------|------------|
+| `ErrNotInitialized` | `sp.New(t)` called before `spectra.Init()` or on nil Spectra | Call `spectra.Init()` in `TestMain` first |
+| `ErrAlreadyShutdown` | Operations attempted after `sp.Shutdown()` | Ensure tests run before shutdown |
+
 ## Telemetry
 
 ### Traces
 
-- Test span per `spectra.New()` call
+- Test span per `sp.New()` call
 - Child spans for subtests via `st.Run()`
 - Setup/teardown spans
 - Custom spans via `st.StartSpan()`
