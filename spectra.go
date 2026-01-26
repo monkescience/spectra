@@ -18,6 +18,34 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	// Event names
+	logEventName = "log"
+
+	// Attribute keys
+	attrMessage    = "message"
+	attrLevel      = "level"
+	attrTestName   = "test.name"
+	attrTestPhase  = "test.phase"
+	attrTestParent = "test.parent"
+	attrTestStatus = "test.status"
+
+	// Log levels
+	levelInfo  = "info"
+	levelError = "error"
+	levelFatal = "fatal"
+	levelSkip  = "skip"
+
+	// Span name suffixes
+	spanSetup    = "/setup"
+	spanTeardown = "/teardown"
+
+	// Status strings
+	statusPass = "pass"
+	statusFail = "fail"
+	statusSkip = "skip"
+)
+
 type Spectra struct {
 	config         config
 	tracerProvider *sdktrace.TracerProvider
@@ -66,6 +94,50 @@ type T struct {
 	startTime time.Time
 }
 
+func (t *T) setFailed() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.failed = true
+}
+
+func (t *T) hasFailed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.failed
+}
+
+func (t *T) recordLog(message, level string) {
+	if t.spectra != nil && t.spectra.config.DisableLogs {
+		return
+	}
+	t.span.AddEvent(logEventName, trace.WithAttributes(
+		attribute.String(attrMessage, message),
+		attribute.String(attrLevel, level),
+	))
+}
+
+func (t *T) determineStatus() (codes.Code, string, string) {
+	switch {
+	case t.hasFailed() || t.tb.Failed():
+		return codes.Error, "test failed", statusFail
+	case t.tb.Skipped():
+		return codes.Ok, "test skipped", statusSkip
+	default:
+		return codes.Ok, "test passed", statusPass
+	}
+}
+
+func determineSubtestStatus(tb testing.TB) (codes.Code, string) {
+	switch {
+	case tb.Failed():
+		return codes.Error, "subtest failed"
+	case tb.Skipped():
+		return codes.Ok, "subtest skipped"
+	default:
+		return codes.Ok, "subtest passed"
+	}
+}
+
 // New creates a new instrumented test wrapper.
 // It creates a span for the test and sets up cleanup to end the span
 // with the appropriate status when the test completes.
@@ -95,7 +167,7 @@ func (s *Spectra) New(tb testing.TB) (*T, error) {
 		context.Background(),
 		tb.Name(),
 		trace.WithAttributes(
-			attribute.String("test.name", tb.Name()),
+			attribute.String(attrTestName, tb.Name()),
 		),
 	)
 
@@ -111,30 +183,11 @@ func (s *Spectra) New(tb testing.TB) (*T, error) {
 	tb.Cleanup(func() {
 		duration := time.Since(t.startTime)
 
-		t.mu.Lock()
-		failed := t.failed
-		t.mu.Unlock()
-
-		var status string
-
-		switch {
-		case failed || tb.Failed():
-			span.SetStatus(codes.Error, "test failed")
-
-			status = "fail"
-		case tb.Skipped():
-			span.SetStatus(codes.Ok, "test skipped")
-
-			status = "skip"
-		default:
-			span.SetStatus(codes.Ok, "test passed")
-
-			status = "pass"
-		}
+		code, message, status := t.determineStatus()
+		span.SetStatus(code, message)
 
 		span.End()
 
-		// Record metrics.
 		recordTestMetrics(ctx, tb.Name(), duration, status)
 	})
 
@@ -181,12 +234,7 @@ func (t *T) Log(args ...any) {
 	t.Helper()
 	t.tb.Log(args...)
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatArgs(args...)),
-			attribute.String("level", "info"),
-		))
-	}
+	t.recordLog(formatArgs(args...), levelInfo)
 }
 
 // Logf logs a formatted message and records it as a span event.
@@ -194,64 +242,38 @@ func (t *T) Logf(format string, args ...any) {
 	t.Helper()
 	t.tb.Logf(format, args...)
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatf(format, args...)),
-			attribute.String("level", "info"),
-		))
-	}
+	t.recordLog(formatf(format, args...), levelInfo)
 }
 
 // Error logs an error and records it as a span event.
 func (t *T) Error(args ...any) {
 	t.Helper()
 
-	t.mu.Lock()
-	t.failed = true
-	t.mu.Unlock()
+	t.setFailed()
 
 	t.tb.Error(args...)
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatArgs(args...)),
-			attribute.String("level", "error"),
-		))
-	}
+	t.recordLog(formatArgs(args...), levelError)
 }
 
 // Errorf logs a formatted error and records it as a span event.
 func (t *T) Errorf(format string, args ...any) {
 	t.Helper()
 
-	t.mu.Lock()
-	t.failed = true
-	t.mu.Unlock()
+	t.setFailed()
 
 	t.tb.Errorf(format, args...)
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatf(format, args...)),
-			attribute.String("level", "error"),
-		))
-	}
+	t.recordLog(formatf(format, args...), levelError)
 }
 
 // Fatal logs a fatal error and records it as a span event.
 func (t *T) Fatal(args ...any) {
 	t.Helper()
 
-	t.mu.Lock()
-	t.failed = true
-	t.mu.Unlock()
+	t.setFailed()
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatArgs(args...)),
-			attribute.String("level", "fatal"),
-		))
-	}
+	t.recordLog(formatArgs(args...), levelFatal)
 
 	t.span.SetStatus(codes.Error, "test fatal")
 	t.tb.Fatal(args...)
@@ -261,16 +283,9 @@ func (t *T) Fatal(args ...any) {
 func (t *T) Fatalf(format string, args ...any) {
 	t.Helper()
 
-	t.mu.Lock()
-	t.failed = true
-	t.mu.Unlock()
+	t.setFailed()
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatf(format, args...)),
-			attribute.String("level", "fatal"),
-		))
-	}
+	t.recordLog(formatf(format, args...), levelFatal)
 
 	t.span.SetStatus(codes.Error, "test fatal")
 	t.tb.Fatalf(format, args...)
@@ -280,12 +295,7 @@ func (t *T) Fatalf(format string, args ...any) {
 func (t *T) Skip(args ...any) {
 	t.Helper()
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatArgs(args...)),
-			attribute.String("level", "skip"),
-		))
-	}
+	t.recordLog(formatArgs(args...), levelSkip)
 
 	t.span.SetStatus(codes.Ok, "test skipped")
 	t.tb.Skip(args...)
@@ -295,12 +305,7 @@ func (t *T) Skip(args ...any) {
 func (t *T) Skipf(format string, args ...any) {
 	t.Helper()
 
-	if t.spectra == nil || !t.spectra.config.DisableLogs {
-		t.span.AddEvent("log", trace.WithAttributes(
-			attribute.String("message", formatf(format, args...)),
-			attribute.String("level", "skip"),
-		))
-	}
+	t.recordLog(formatf(format, args...), levelSkip)
 
 	t.span.SetStatus(codes.Ok, "test skipped")
 	t.tb.Skipf(format, args...)

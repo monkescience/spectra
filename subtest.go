@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -30,8 +29,8 @@ func (t *T) Run(name string, f func(*T)) bool {
 			t.ctx,
 			innerT.Name(),
 			trace.WithAttributes(
-				attribute.String("test.name", innerT.Name()),
-				attribute.String("test.parent", t.Name()),
+				attribute.String(attrTestName, innerT.Name()),
+				attribute.String(attrTestParent, t.Name()),
 			),
 		)
 
@@ -44,14 +43,8 @@ func (t *T) Run(name string, f func(*T)) bool {
 		}
 
 		innerT.Cleanup(func() {
-			switch {
-			case innerT.Failed():
-				span.SetStatus(codes.Error, "subtest failed")
-			case innerT.Skipped():
-				span.SetStatus(codes.Ok, "subtest skipped")
-			default:
-				span.SetStatus(codes.Ok, "subtest passed")
-			}
+			code, message := determineSubtestStatus(innerT)
+			span.SetStatus(code, message)
 
 			span.End()
 		})

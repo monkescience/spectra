@@ -40,9 +40,9 @@ func (t *T) Setup(fn func(ctx context.Context)) {
 
 	ctx, span := t.tracer.Start(
 		t.ctx,
-		t.Name()+"/setup",
+		t.Name()+spanSetup,
 		trace.WithAttributes(
-			attribute.String("test.phase", "setup"),
+			attribute.String(attrTestPhase, "setup"),
 		),
 	)
 	defer span.End()
@@ -67,9 +67,9 @@ func (t *T) Teardown(fn func(ctx context.Context)) {
 	t.Cleanup(func() {
 		ctx, span := t.tracer.Start(
 			t.ctx,
-			t.Name()+"/teardown",
+			t.Name()+spanTeardown,
 			trace.WithAttributes(
-				attribute.String("test.phase", "teardown"),
+				attribute.String(attrTestPhase, "teardown"),
 			),
 		)
 		defer span.End()

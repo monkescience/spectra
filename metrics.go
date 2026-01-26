@@ -64,8 +64,8 @@ func recordTestMetrics(ctx context.Context, testName string, duration time.Durat
 	}
 
 	attrs := []attribute.KeyValue{
-		attribute.String("test.name", testName),
-		attribute.String("test.status", status),
+		attribute.String(attrTestName, testName),
+		attribute.String(attrTestStatus, status),
 	}
 
 	testMetrics.duration.Record(ctx, duration.Seconds(), metric.WithAttributes(attrs...))
