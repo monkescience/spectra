@@ -691,83 +691,83 @@ func TestInit(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithInsecure(),
 	)
-	// then - should return a valid shutdown function.
+	// then - should return a valid Spectra instance.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if shutdown == nil {
-		t.Error("expected non-nil shutdown function")
+	if sp == nil {
+		t.Error("expected non-nil Spectra instance")
 	}
 
 	// Cleanup.
-	shutdown()
+	sp.Shutdown()
 }
 
 func TestInit_HTTP(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("http://localhost:4318"),
 	)
-	// then - should return a valid shutdown function.
+	// then - should return a valid Spectra instance.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if shutdown == nil {
-		t.Error("expected non-nil shutdown function")
+	if sp == nil {
+		t.Error("expected non-nil Spectra instance")
 	}
 
-	shutdown()
+	sp.Shutdown()
 }
 
 func TestInit_HTTPS(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("https://localhost:4318"),
 	)
-	// then - should return a valid shutdown function.
+	// then - should return a valid Spectra instance.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if shutdown == nil {
-		t.Error("expected non-nil shutdown function")
+	if sp == nil {
+		t.Error("expected non-nil Spectra instance")
 	}
 
-	shutdown()
+	sp.Shutdown()
 }
 
 func TestInit_HTTPS_Insecure(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("https://localhost:4318"),
 		spectra.WithInsecure(),
 	)
-	// then - should return a valid shutdown function.
+	// then - should return a valid Spectra instance.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if shutdown == nil {
-		t.Error("expected non-nil shutdown function")
+	if sp == nil {
+		t.Error("expected non-nil Spectra instance")
 	}
 
-	shutdown()
+	sp.Shutdown()
 }
 
 func TestInit_InvalidEndpoint(t *testing.T) {
@@ -789,42 +789,42 @@ func TestInit_DisableTraces(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithoutTraces(),
 	)
-	// then - should return a valid shutdown function even with traces disabled.
+	// then - should return a valid Spectra instance even with traces disabled.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if shutdown == nil {
-		t.Error("expected non-nil shutdown function")
+	if sp == nil {
+		t.Error("expected non-nil Spectra instance")
 	}
 
-	shutdown()
+	sp.Shutdown()
 }
 
 func TestInit_DisableMetrics(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given/when
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithoutMetrics(),
 	)
-	// then - should return a valid shutdown function even with metrics disabled.
+	// then - should return a valid Spectra instance even with metrics disabled.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if shutdown == nil {
-		t.Error("expected non-nil shutdown function")
+	if sp == nil {
+		t.Error("expected non-nil Spectra instance")
 	}
 
-	shutdown()
+	sp.Shutdown()
 }
 
 func TestInit_DisableLogs(t *testing.T) {
@@ -833,7 +833,7 @@ func TestInit_DisableLogs(t *testing.T) {
 	// given
 	exporter := setupTestTracer(t)
 
-	shutdown, err := spectra.Init(
+	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithoutLogs(),
@@ -842,7 +842,7 @@ func TestInit_DisableLogs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	defer shutdown()
+	defer sp.Shutdown()
 
 	// when
 	t.Run("logs_disabled", func(innerT *testing.T) {
@@ -864,4 +864,44 @@ func TestInit_DisableLogs(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestSpectraInit(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given/when
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+	)
+
+	// then
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if sp == nil {
+		t.Fatal("expected non-nil *Spectra")
+	}
+
+	defer sp.Shutdown()
+}
+
+func TestSpectraShutdownIdempotent(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// when - call Shutdown twice
+	sp.Shutdown()
+	sp.Shutdown() // should not panic
+
+	// then - test passes if no panic occurred
 }

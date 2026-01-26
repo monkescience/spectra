@@ -31,6 +31,12 @@ var (
 
 	// ErrInvalidEndpoint is returned when endpoint doesn't have a valid scheme.
 	ErrInvalidEndpoint = errors.New("endpoint must have scheme (grpc://, http://, or https://)")
+
+	// ErrNotInitialized is returned when Spectra is used before initialization.
+	ErrNotInitialized = errors.New("spectra not initialized")
+
+	// ErrAlreadyShutdown is returned when operations are attempted after shutdown.
+	ErrAlreadyShutdown = errors.New("spectra already shutdown")
 )
 
 type protocol string
@@ -81,10 +87,8 @@ type config struct {
 	DisableLogs bool
 }
 
-var globalConfig config //nolint:gochecknoglobals // config needs to be accessible from T methods.
-
 // Init initializes OpenTelemetry providers for test instrumentation.
-// It returns a shutdown function that should be deferred in TestMain.
+// It returns a Spectra instance that manages the telemetry lifecycle.
 //
 // ServiceName and Endpoint are required. Endpoint must include a scheme:
 //   - grpc://host:port - gRPC protocol
@@ -94,17 +98,17 @@ var globalConfig config //nolint:gochecknoglobals // config needs to be accessib
 // Example:
 //
 //	func TestMain(m *testing.M) {
-//	    shutdown, err := spectra.Init(
+//	    sp, err := spectra.Init(
 //	        spectra.WithServiceName("my-service-tests"),
 //	        spectra.WithEndpoint("grpc://localhost:4317"),
 //	    )
 //	    if err != nil {
 //	        log.Fatalf("spectra init: %v", err)
 //	    }
-//	    defer shutdown()
+//	    defer sp.Shutdown()
 //	    os.Exit(m.Run())
 //	}
-func Init(opts ...Option) (func(), error) {
+func Init(opts ...Option) (*Spectra, error) {
 	cfg := config{}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -115,36 +119,34 @@ func Init(opts ...Option) (func(), error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	globalConfig = cfg
+	sp := &Spectra{
+		config:      cfg,
+		initialized: true,
+	}
 
 	ctx := context.Background()
 	res := createResource(cfg)
 
-	var traceShutdown, metricShutdown func()
-
 	if !cfg.DisableTraces {
-		_, traceShutdown, err = setupTracing(ctx, cfg, res)
+		tp, _, err := setupTracing(ctx, cfg, res)
 		if err != nil {
 			return nil, fmt.Errorf("setup tracing: %w", err)
 		}
+		sp.tracerProvider = tp
+		sp.tracer = tp.Tracer("spectra")
 	}
 
 	if !cfg.DisableMetrics {
-		_, metricShutdown, err = setupMetrics(ctx, cfg, res)
+		mp, _, err := setupMetrics(ctx, cfg, res)
 		if err != nil {
 			return nil, fmt.Errorf("setup metrics: %w", err)
 		}
+		sp.meterProvider = mp
 	}
 
-	return func() {
-		if traceShutdown != nil {
-			traceShutdown()
-		}
+	globalSpectra = sp
 
-		if metricShutdown != nil {
-			metricShutdown()
-		}
-	}, nil
+	return sp, nil
 }
 
 // createResource creates the OTEL resource with service info.
