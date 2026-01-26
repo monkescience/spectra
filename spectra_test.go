@@ -1008,3 +1008,25 @@ func TestNewAfterShutdown(t *testing.T) {
 		t.Errorf("expected ErrAlreadyShutdown, got %v", err)
 	}
 }
+
+func TestInitMetrics(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given/when - Init with metrics enabled (default)
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+		spectra.WithoutTraces(), // disable traces to isolate metrics
+	)
+
+	// then - should succeed (metrics initialization happens internally)
+	if err != nil {
+		t.Fatalf("unexpected error during init with metrics: %v", err)
+	}
+
+	if sp == nil {
+		t.Fatal("expected non-nil Spectra instance")
+	}
+
+	defer sp.Shutdown()
+}

@@ -2,6 +2,7 @@ package spectra
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -23,7 +24,8 @@ type Metrics struct {
 
 // initMetrics initializes the metrics instruments.
 // This is called automatically by spectra.Init().
-func initMetrics() {
+func (s *Spectra) initMetrics() error {
+	var initErr error
 	metricsOnce.Do(func() {
 		meter := otel.Meter("spectra")
 
@@ -33,6 +35,7 @@ func initMetrics() {
 			metric.WithUnit("s"),
 		)
 		if err != nil {
+			initErr = fmt.Errorf("create duration histogram: %w", err)
 			return
 		}
 
@@ -42,6 +45,7 @@ func initMetrics() {
 			metric.WithUnit("{test}"),
 		)
 		if err != nil {
+			initErr = fmt.Errorf("create count counter: %w", err)
 			return
 		}
 
@@ -50,6 +54,7 @@ func initMetrics() {
 			count:    count,
 		}
 	})
+	return initErr
 }
 
 // recordTestMetrics records metrics for a completed test.

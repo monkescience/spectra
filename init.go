@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -125,7 +126,10 @@ func Init(opts ...Option) (*Spectra, error) {
 	}
 
 	ctx := context.Background()
-	res := createResource(cfg)
+	res, err := createResource(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create resource: %w", err)
+	}
 
 	if !cfg.DisableTraces {
 		tp, _, err := setupTracing(ctx, cfg, res)
@@ -137,7 +141,7 @@ func Init(opts ...Option) (*Spectra, error) {
 	}
 
 	if !cfg.DisableMetrics {
-		mp, _, err := setupMetrics(ctx, cfg, res)
+		mp, _, err := setupMetrics(ctx, cfg, res, sp)
 		if err != nil {
 			return nil, fmt.Errorf("setup metrics: %w", err)
 		}
@@ -148,20 +152,22 @@ func Init(opts ...Option) (*Spectra, error) {
 }
 
 // createResource creates the OTEL resource with service info.
-func createResource(cfg config) *resource.Resource {
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
+func createResource(cfg config) (*resource.Resource, error) {
+	res, err := resource.New(
+		context.Background(),
+		resource.WithAttributes(
 			semconv.ServiceName(cfg.ServiceName),
 			semconv.ServiceVersion("test"),
 		),
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
 	)
 	if err != nil {
-		return resource.Default()
+		return nil, fmt.Errorf("create resource: %w", err)
 	}
 
-	return res
+	return res, nil
 }
 
 // setupTracing configures the trace provider and returns a shutdown function.
@@ -213,12 +219,14 @@ func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdk
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
-		_ = tp.Shutdown(shutdownCtx)
+		if err := tp.Shutdown(shutdownCtx); err != nil {
+			log.Printf("spectra: failed to shutdown tracer provider: %v", err)
+		}
 	}, nil
 }
 
 // setupMetrics configures the meter provider and returns a shutdown function.
-func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*metric.MeterProvider, func(), error) {
+func setupMetrics(ctx context.Context, cfg config, res *resource.Resource, sp *Spectra) (*metric.MeterProvider, func(), error) {
 	proto, endpoint, err := parseProtocol(cfg.Endpoint)
 	if err != nil {
 		return nil, nil, err
@@ -260,14 +268,18 @@ func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*met
 	)
 	otel.SetMeterProvider(mp)
 
-	initMetrics()
+	if err := sp.initMetrics(); err != nil {
+		return nil, nil, fmt.Errorf("init metrics: %w", err)
+	}
 
 	//nolint:contextcheck // Shutdown uses fresh context with timeout, not the init context.
 	return mp, func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
-		_ = mp.Shutdown(shutdownCtx)
+		if err := mp.Shutdown(shutdownCtx); err != nil {
+			log.Printf("spectra: failed to shutdown meter provider: %v", err)
+		}
 	}, nil
 }
 
