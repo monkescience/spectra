@@ -16,7 +16,7 @@ import (
 func (t *T) Run(name string, f func(*T)) bool {
 	t.Helper()
 
-	tt, ok := t.TB.(*testing.T)
+	tt, ok := t.tb.(*testing.T)
 	if !ok {
 		t.Fatal("spectra: Run() requires *testing.T, not *testing.B")
 
@@ -36,10 +36,11 @@ func (t *T) Run(name string, f func(*T)) bool {
 		)
 
 		st := &T{
-			TB:     innerT,
-			ctx:    ctx,
-			span:   span,
-			tracer: t.tracer,
+			tb:      innerT,
+			ctx:     ctx,
+			span:    span,
+			tracer:  t.tracer,
+			spectra: t.spectra,
 		}
 
 		innerT.Cleanup(func() {
@@ -65,7 +66,7 @@ func (t *T) Run(name string, f func(*T)) bool {
 func (t *T) Parallel() {
 	t.Helper()
 
-	tt, ok := t.TB.(*testing.T)
+	tt, ok := t.tb.(*testing.T)
 	if !ok {
 		return
 	}

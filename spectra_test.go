@@ -2,6 +2,7 @@ package spectra_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/monkescience/spectra"
@@ -12,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-func setupTestTracer(t *testing.T) *tracetest.InMemoryExporter {
+func setupTestTracer(t *testing.T) (*tracetest.InMemoryExporter, *spectra.Spectra) {
 	t.Helper()
 
 	exporter := tracetest.NewInMemoryExporter()
@@ -21,11 +22,22 @@ func setupTestTracer(t *testing.T) *tracetest.InMemoryExporter {
 	)
 	otel.SetTracerProvider(tp)
 
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+		spectra.WithoutTraces(),
+		spectra.WithoutMetrics(),
+	)
+	if err != nil {
+		t.Fatalf("failed to init spectra: %v", err)
+	}
+
 	t.Cleanup(func() {
 		_ = tp.Shutdown(context.Background())
+		sp.Shutdown()
 	})
 
-	return exporter
+	return exporter, sp
 }
 
 // mockTB is a mock testing.TB that doesn't actually fail tests.
@@ -70,11 +82,14 @@ func TestNew(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when - run in subtest so span completes.
 	t.Run("creates_span", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.Log("test message")
 	})
 
@@ -103,11 +118,14 @@ func TestT_Log(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when
 	t.Run("logs_message", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.Log("hello", "world")
 		st.Logf("formatted %s", "message")
 	})
@@ -142,11 +160,14 @@ func TestT_SetAttributes(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when
 	t.Run("sets_attributes", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.SetAttributes(
 			attribute.String("custom.key", "custom.value"),
 			attribute.Int("custom.number", 42),
@@ -188,11 +209,14 @@ func TestT_AddEvent(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when
 	t.Run("adds_event", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.AddEvent("custom.event", attribute.String("key", "value"))
 	})
 
@@ -231,8 +255,11 @@ func TestT_Context(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	_ = setupTestTracer(t)
-	st := spectra.New(t)
+	_, sp := setupTestTracer(t)
+	st, err := sp.New(t)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 
 	// when
 	ctx := st.Context()
@@ -247,8 +274,11 @@ func TestT_Span(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	_ = setupTestTracer(t)
-	st := spectra.New(t)
+	_, sp := setupTestTracer(t)
+	st, err := sp.New(t)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 
 	// when
 	span := st.Span()
@@ -267,11 +297,14 @@ func TestT_Run(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when - run parent and subtest.
 	t.Run("parent", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.Run("subtest", func(subST *spectra.T) {
 			subST.Log("subtest message")
 		})
@@ -310,11 +343,14 @@ func TestT_StartSpan(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when
 	t.Run("creates_child_span", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		ctx, span := st.StartSpan("custom-operation")
 		span.End()
 
@@ -344,11 +380,14 @@ func TestT_Setup(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when
 	t.Run("runs_setup", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		setupCalled := false
 
 		st.Setup(func(_ context.Context) {
@@ -381,12 +420,15 @@ func TestT_Teardown(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 	teardownCalled := false
 
 	// when
 	t.Run("runs_teardown", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 
 		st.Teardown(func(_ context.Context) {
 			teardownCalled = true
@@ -423,11 +465,14 @@ func TestT_SpanStatus_Pass(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 
 	// when - run a passing test.
 	t.Run("passing", func(innerT *testing.T) {
-		_ = spectra.New(innerT)
+		_, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		// Test passes without any errors.
 	})
 
@@ -452,11 +497,14 @@ func TestT_Error(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Error")
 
 	// when
-	st := spectra.New(mock)
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 	st.Error("test error message")
 	st.Errorf("formatted error: %s", "details")
 	mock.runCleanups()
@@ -499,11 +547,14 @@ func TestT_Fatal(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Fatal")
 
 	// when
-	st := spectra.New(mock)
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 	st.Fatal("fatal error")
 	mock.runCleanups()
 
@@ -545,11 +596,14 @@ func TestT_Fatalf(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Fatalf")
 
 	// when
-	st := spectra.New(mock)
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 	st.Fatalf("fatal error: %s", "formatted")
 	mock.runCleanups()
 
@@ -587,11 +641,14 @@ func TestT_Skip(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Skip")
 
 	// when
-	st := spectra.New(mock)
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 	st.Skip("skipping test")
 	mock.runCleanups()
 
@@ -633,11 +690,14 @@ func TestT_Skipf(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Skipf")
 
 	// when
-	st := spectra.New(mock)
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
 	st.Skipf("skipping: %s", "reason")
 	mock.runCleanups()
 
@@ -675,11 +735,14 @@ func TestT_Parallel(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	_ = setupTestTracer(t)
+	_, sp := setupTestTracer(t)
 
 	// when - run in subtest with Parallel.
 	t.Run("parallel_test", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.Parallel()
 		st.Log("running in parallel")
 	})
@@ -831,7 +894,7 @@ func TestInit_DisableLogs(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
 	// given
-	exporter := setupTestTracer(t)
+	exporter, _ := setupTestTracer(t)
 
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
@@ -846,7 +909,10 @@ func TestInit_DisableLogs(t *testing.T) {
 
 	// when
 	t.Run("logs_disabled", func(innerT *testing.T) {
-		st := spectra.New(innerT)
+		st, err := sp.New(innerT)
+		if err != nil {
+			innerT.Fatalf("failed to create test: %v", err)
+		}
 		st.Log("this should not appear as span event")
 	})
 
@@ -904,4 +970,41 @@ func TestSpectraShutdownIdempotent(t *testing.T) {
 	sp.Shutdown() // should not panic
 
 	// then - test passes if no panic occurred
+}
+
+func TestNewReturnsError(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given - nil Spectra, not initialized
+	var sp *spectra.Spectra
+
+	// when
+	_, err := sp.New(t)
+
+	// then
+	if !errors.Is(err, spectra.ErrNotInitialized) {
+		t.Errorf("expected ErrNotInitialized, got %v", err)
+	}
+}
+
+func TestNewAfterShutdown(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// when - shutdown then try to create new test
+	sp.Shutdown()
+	_, err = sp.New(t)
+
+	// then
+	if !errors.Is(err, spectra.ErrAlreadyShutdown) {
+		t.Errorf("expected ErrAlreadyShutdown, got %v", err)
+	}
 }

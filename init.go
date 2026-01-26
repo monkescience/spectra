@@ -144,8 +144,6 @@ func Init(opts ...Option) (*Spectra, error) {
 		sp.meterProvider = mp
 	}
 
-	globalSpectra = sp
-
 	return sp, nil
 }
 

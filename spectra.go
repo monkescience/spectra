@@ -17,8 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var globalSpectra *Spectra //nolint:gochecknoglobals // Temporary global until New() is refactored to take *Spectra.
-
 type Spectra struct {
 	config         config
 	tracerProvider *sdktrace.TracerProvider
@@ -26,10 +24,16 @@ type Spectra struct {
 	tracer         trace.Tracer
 	shutdownOnce   sync.Once
 	initialized    bool
+	shutdown       bool
+	mu             sync.RWMutex
 }
 
 func (s *Spectra) Shutdown() {
 	s.shutdownOnce.Do(func() {
+		s.mu.Lock()
+		s.shutdown = true
+		s.mu.Unlock()
+
 		ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
 		defer cancel()
 
@@ -46,10 +50,11 @@ func (s *Spectra) Shutdown() {
 // T wraps testing.TB with OpenTelemetry instrumentation.
 // It creates spans for test execution, captures logs, and records metrics.
 type T struct {
-	testing.TB
-	ctx    context.Context //nolint:containedctx // Context is needed for span propagation in tests.
-	span   trace.Span
-	tracer trace.Tracer
+	tb      testing.TB
+	ctx     context.Context //nolint:containedctx // Context is needed for span propagation in tests.
+	span    trace.Span
+	tracer  trace.Tracer
+	spectra *Spectra
 
 	mu        sync.Mutex
 	failed    bool
@@ -61,10 +66,26 @@ type T struct {
 // with the appropriate status when the test completes.
 //
 //nolint:spancheck // Span is ended in tb.Cleanup, not visible to static analysis.
-func New(tb testing.TB) *T {
+func (s *Spectra) New(tb testing.TB) (*T, error) {
 	tb.Helper()
 
-	tracer := otel.Tracer("spectra")
+	if s == nil || !s.initialized {
+		return nil, ErrNotInitialized
+	}
+
+	s.mu.RLock()
+	shutdown := s.shutdown
+	s.mu.RUnlock()
+
+	if shutdown {
+		return nil, ErrAlreadyShutdown
+	}
+
+	tracer := s.tracer
+	if tracer == nil {
+		tracer = otel.Tracer("spectra")
+	}
+
 	ctx, span := tracer.Start(
 		context.Background(),
 		tb.Name(),
@@ -74,10 +95,11 @@ func New(tb testing.TB) *T {
 	)
 
 	t := &T{
-		TB:        tb,
+		tb:        tb,
 		ctx:       ctx,
 		span:      span,
 		tracer:    tracer,
+		spectra:   s,
 		startTime: time.Now(),
 	}
 
@@ -111,7 +133,22 @@ func New(tb testing.TB) *T {
 		recordTestMetrics(ctx, tb.Name(), duration, status)
 	})
 
-	return t
+	return t, nil
+}
+
+// Name returns the name of the test.
+func (t *T) Name() string {
+	return t.tb.Name()
+}
+
+// Helper marks the calling function as a test helper function.
+func (t *T) Helper() {
+	t.tb.Helper()
+}
+
+// Cleanup registers a function to be called when the test completes.
+func (t *T) Cleanup(f func()) {
+	t.tb.Cleanup(f)
 }
 
 // Context returns the context associated with this test's span.
@@ -137,9 +174,9 @@ func (t *T) AddEvent(name string, attrs ...attribute.KeyValue) {
 // Log logs a message and records it as a span event.
 func (t *T) Log(args ...any) {
 	t.Helper()
-	t.TB.Log(args...)
+	t.tb.Log(args...)
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatArgs(args...)),
 			attribute.String("level", "info"),
@@ -150,9 +187,9 @@ func (t *T) Log(args ...any) {
 // Logf logs a formatted message and records it as a span event.
 func (t *T) Logf(format string, args ...any) {
 	t.Helper()
-	t.TB.Logf(format, args...)
+	t.tb.Logf(format, args...)
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatf(format, args...)),
 			attribute.String("level", "info"),
@@ -168,9 +205,9 @@ func (t *T) Error(args ...any) {
 	t.failed = true
 	t.mu.Unlock()
 
-	t.TB.Error(args...)
+	t.tb.Error(args...)
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatArgs(args...)),
 			attribute.String("level", "error"),
@@ -186,9 +223,9 @@ func (t *T) Errorf(format string, args ...any) {
 	t.failed = true
 	t.mu.Unlock()
 
-	t.TB.Errorf(format, args...)
+	t.tb.Errorf(format, args...)
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatf(format, args...)),
 			attribute.String("level", "error"),
@@ -204,7 +241,7 @@ func (t *T) Fatal(args ...any) {
 	t.failed = true
 	t.mu.Unlock()
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatArgs(args...)),
 			attribute.String("level", "fatal"),
@@ -212,7 +249,7 @@ func (t *T) Fatal(args ...any) {
 	}
 
 	t.span.SetStatus(codes.Error, "test fatal")
-	t.TB.Fatal(args...)
+	t.tb.Fatal(args...)
 }
 
 // Fatalf logs a formatted fatal error and records it as a span event.
@@ -223,7 +260,7 @@ func (t *T) Fatalf(format string, args ...any) {
 	t.failed = true
 	t.mu.Unlock()
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatf(format, args...)),
 			attribute.String("level", "fatal"),
@@ -231,14 +268,14 @@ func (t *T) Fatalf(format string, args ...any) {
 	}
 
 	t.span.SetStatus(codes.Error, "test fatal")
-	t.TB.Fatalf(format, args...)
+	t.tb.Fatalf(format, args...)
 }
 
 // Skip logs a skip message and records it as a span event.
 func (t *T) Skip(args ...any) {
 	t.Helper()
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatArgs(args...)),
 			attribute.String("level", "skip"),
@@ -246,14 +283,14 @@ func (t *T) Skip(args ...any) {
 	}
 
 	t.span.SetStatus(codes.Ok, "test skipped")
-	t.TB.Skip(args...)
+	t.tb.Skip(args...)
 }
 
 // Skipf logs a formatted skip message and records it as a span event.
 func (t *T) Skipf(format string, args ...any) {
 	t.Helper()
 
-	if globalSpectra == nil || !globalSpectra.config.DisableLogs {
+	if t.spectra == nil || !t.spectra.config.DisableLogs {
 		t.span.AddEvent("log", trace.WithAttributes(
 			attribute.String("message", formatf(format, args...)),
 			attribute.String("level", "skip"),
@@ -261,5 +298,5 @@ func (t *T) Skipf(format string, args ...any) {
 	}
 
 	t.span.SetStatus(codes.Ok, "test skipped")
-	t.TB.Skipf(format, args...)
+	t.tb.Skipf(format, args...)
 }
