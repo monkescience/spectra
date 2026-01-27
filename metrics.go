@@ -26,6 +26,7 @@ type Metrics struct {
 // This is called automatically by spectra.Init().
 func (s *Spectra) initMetrics() error {
 	var initErr error
+
 	metricsOnce.Do(func() {
 		meter := otel.Meter("spectra")
 
@@ -36,6 +37,7 @@ func (s *Spectra) initMetrics() error {
 		)
 		if err != nil {
 			initErr = fmt.Errorf("create duration histogram: %w", err)
+
 			return
 		}
 
@@ -46,6 +48,7 @@ func (s *Spectra) initMetrics() error {
 		)
 		if err != nil {
 			initErr = fmt.Errorf("create count counter: %w", err)
+
 			return
 		}
 
@@ -54,6 +57,7 @@ func (s *Spectra) initMetrics() error {
 			count:    count,
 		}
 	})
+
 	return initErr
 }
 

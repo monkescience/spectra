@@ -90,6 +90,7 @@ func TestNew(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.Log("test message")
 	})
 
@@ -126,6 +127,7 @@ func TestT_Log(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.Log("hello", "world")
 		st.Logf("formatted %s", "message")
 	})
@@ -168,6 +170,7 @@ func TestT_SetAttributes(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.SetAttributes(
 			attribute.String("custom.key", "custom.value"),
 			attribute.Int("custom.number", 42),
@@ -217,6 +220,7 @@ func TestT_AddEvent(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.AddEvent("custom.event", attribute.String("key", "value"))
 	})
 
@@ -256,6 +260,7 @@ func TestT_Context(t *testing.T) {
 
 	// given
 	_, sp := setupTestTracer(t)
+
 	st, err := sp.New(t)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -275,6 +280,7 @@ func TestT_Span(t *testing.T) {
 
 	// given
 	_, sp := setupTestTracer(t)
+
 	st, err := sp.New(t)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -305,6 +311,7 @@ func TestT_Run(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.Run("subtest", func(subST *spectra.T) {
 			subST.Log("subtest message")
 		})
@@ -351,6 +358,7 @@ func TestT_StartSpan(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		ctx, span := st.StartSpan("custom-operation")
 		span.End()
 
@@ -388,6 +396,7 @@ func TestT_Setup(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		setupCalled := false
 
 		st.Setup(func(_ context.Context) {
@@ -505,6 +514,7 @@ func TestT_Error(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.Error("test error message")
 	st.Errorf("formatted error: %s", "details")
 	mock.runCleanups()
@@ -555,6 +565,7 @@ func TestT_Fatal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.Fatal("fatal error")
 	mock.runCleanups()
 
@@ -604,6 +615,7 @@ func TestT_Fatalf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.Fatalf("fatal error: %s", "formatted")
 	mock.runCleanups()
 
@@ -649,6 +661,7 @@ func TestT_Skip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.Skip("skipping test")
 	mock.runCleanups()
 
@@ -698,6 +711,7 @@ func TestT_Skipf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.Skipf("skipping: %s", "reason")
 	mock.runCleanups()
 
@@ -743,6 +757,7 @@ func TestT_Parallel(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.Parallel()
 		st.Log("running in parallel")
 	})
@@ -913,6 +928,7 @@ func TestInit_DisableLogs(t *testing.T) {
 		if err != nil {
 			innerT.Fatalf("failed to create test: %v", err)
 		}
+
 		st.Log("this should not appear as span event")
 	})
 
@@ -940,7 +956,6 @@ func TestSpectraInit(t *testing.T) {
 		spectra.WithServiceName("test"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 	)
-
 	// then
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1018,7 +1033,6 @@ func TestInitMetrics(t *testing.T) {
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithoutTraces(), // disable traces to isolate metrics
 	)
-
 	// then - should succeed (metrics initialization happens internally)
 	if err != nil {
 		t.Fatalf("unexpected error during init with metrics: %v", err)
@@ -1043,6 +1057,7 @@ func TestT_FailNow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.FailNow()
 	mock.runCleanups()
 
@@ -1098,6 +1113,7 @@ func TestT_SkipNow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
 	}
+
 	st.SkipNow()
 	mock.runCleanups()
 

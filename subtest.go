@@ -10,8 +10,6 @@ import (
 // Run runs a subtest with its own span as a child of the current test span.
 // For parallel tests (when t.Parallel() is called), the subtest span is linked
 // to the parent span rather than being a direct child.
-//
-//nolint:spancheck // Span is ended in innerT.Cleanup, not visible to static analysis.
 func (t *T) Run(name string, f func(*T)) bool {
 	t.Helper()
 

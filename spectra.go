@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	// Event names
+	// Event names.
 	logEventName = "log"
 
-	// Attribute keys
+	// Attribute keys.
 	attrMessage    = "message"
 	attrLevel      = "level"
 	attrTestName   = "test.name"
@@ -30,17 +30,17 @@ const (
 	attrTestParent = "test.parent"
 	attrTestStatus = "test.status"
 
-	// Log levels
+	// Log levels.
 	levelInfo  = "info"
 	levelError = "error"
 	levelFatal = "fatal"
 	levelSkip  = "skip"
 
-	// Span name suffixes
+	// Span name suffixes.
 	spanSetup    = "/setup"
 	spanTeardown = "/teardown"
 
-	// Status strings
+	// Status strings.
 	statusPass = "pass"
 	statusFail = "fail"
 	statusSkip = "skip"
@@ -67,13 +67,15 @@ func (s *Spectra) Shutdown() {
 		defer cancel()
 
 		if s.tracerProvider != nil {
-			if err := s.tracerProvider.Shutdown(ctx); err != nil {
+			err := s.tracerProvider.Shutdown(ctx)
+			if err != nil {
 				log.Printf("spectra: failed to shutdown tracer provider: %v", err)
 			}
 		}
 
 		if s.meterProvider != nil {
-			if err := s.meterProvider.Shutdown(ctx); err != nil {
+			err := s.meterProvider.Shutdown(ctx)
+			if err != nil {
 				log.Printf("spectra: failed to shutdown meter provider: %v", err)
 			}
 		}
@@ -94,40 +96,9 @@ type T struct {
 	startTime time.Time
 }
 
-func (t *T) setFailed() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.failed = true
-}
-
-func (t *T) hasFailed() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.failed
-}
-
-func (t *T) recordLog(message, level string) {
-	if t.spectra != nil && t.spectra.config.DisableLogs {
-		return
-	}
-	t.span.AddEvent(logEventName, trace.WithAttributes(
-		attribute.String(attrMessage, message),
-		attribute.String(attrLevel, level),
-	))
-}
-
-func (t *T) determineStatus() (codes.Code, string, string) {
-	switch {
-	case t.hasFailed() || t.tb.Failed():
-		return codes.Error, "test failed", statusFail
-	case t.tb.Skipped():
-		return codes.Ok, "test skipped", statusSkip
-	default:
-		return codes.Ok, "test passed", statusPass
-	}
-}
-
 func determineSubtestStatus(tb testing.TB) (codes.Code, string) {
+	tb.Helper()
+
 	switch {
 	case tb.Failed():
 		return codes.Error, "subtest failed"
@@ -141,8 +112,6 @@ func determineSubtestStatus(tb testing.TB) (codes.Code, string) {
 // New creates a new instrumented test wrapper.
 // It creates a span for the test and sets up cleanup to end the span
 // with the appropriate status when the test completes.
-//
-//nolint:spancheck // Span is ended in tb.Cleanup, not visible to static analysis.
 func (s *Spectra) New(tb testing.TB) (*T, error) {
 	tb.Helper()
 
@@ -331,4 +300,40 @@ func (t *T) SkipNow() {
 
 	t.span.SetStatus(codes.Ok, "test skipped")
 	t.tb.SkipNow()
+}
+
+func (t *T) setFailed() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.failed = true
+}
+
+func (t *T) hasFailed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.failed
+}
+
+func (t *T) recordLog(message, level string) {
+	if t.spectra != nil && t.spectra.config.DisableLogs {
+		return
+	}
+
+	t.span.AddEvent(logEventName, trace.WithAttributes(
+		attribute.String(attrMessage, message),
+		attribute.String(attrLevel, level),
+	))
+}
+
+func (t *T) determineStatus() (codes.Code, string, string) {
+	switch {
+	case t.hasFailed() || t.tb.Failed():
+		return codes.Error, "test failed", statusFail
+	case t.tb.Skipped():
+		return codes.Ok, "test skipped", statusSkip
+	default:
+		return codes.Ok, "test passed", statusPass
+	}
 }

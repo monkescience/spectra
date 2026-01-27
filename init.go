@@ -126,6 +126,7 @@ func Init(opts ...Option) (*Spectra, error) {
 	}
 
 	ctx := context.Background()
+
 	res, err := createResource(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create resource: %w", err)
@@ -136,6 +137,7 @@ func Init(opts ...Option) (*Spectra, error) {
 		if err != nil {
 			return nil, fmt.Errorf("setup tracing: %w", err)
 		}
+
 		sp.tracerProvider = tp
 		sp.tracer = tp.Tracer("spectra")
 	}
@@ -145,6 +147,7 @@ func Init(opts ...Option) (*Spectra, error) {
 		if err != nil {
 			return nil, fmt.Errorf("setup metrics: %w", err)
 		}
+
 		sp.meterProvider = mp
 	}
 
@@ -219,14 +222,20 @@ func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdk
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
-		if err := tp.Shutdown(shutdownCtx); err != nil {
+		err := tp.Shutdown(shutdownCtx)
+		if err != nil {
 			log.Printf("spectra: failed to shutdown tracer provider: %v", err)
 		}
 	}, nil
 }
 
 // setupMetrics configures the meter provider and returns a shutdown function.
-func setupMetrics(ctx context.Context, cfg config, res *resource.Resource, sp *Spectra) (*metric.MeterProvider, func(), error) {
+func setupMetrics(
+	ctx context.Context,
+	cfg config,
+	res *resource.Resource,
+	sp *Spectra,
+) (*metric.MeterProvider, func(), error) {
 	proto, endpoint, err := parseProtocol(cfg.Endpoint)
 	if err != nil {
 		return nil, nil, err
@@ -268,7 +277,8 @@ func setupMetrics(ctx context.Context, cfg config, res *resource.Resource, sp *S
 	)
 	otel.SetMeterProvider(mp)
 
-	if err := sp.initMetrics(); err != nil {
+	err = sp.initMetrics()
+	if err != nil {
 		return nil, nil, fmt.Errorf("init metrics: %w", err)
 	}
 
@@ -277,7 +287,8 @@ func setupMetrics(ctx context.Context, cfg config, res *resource.Resource, sp *S
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
-		if err := mp.Shutdown(shutdownCtx); err != nil {
+		err := mp.Shutdown(shutdownCtx)
+		if err != nil {
 			log.Printf("spectra: failed to shutdown meter provider: %v", err)
 		}
 	}, nil
