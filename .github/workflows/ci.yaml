@@ -25,17 +25,59 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: go.mod
+
       - name: Run tests with coverage
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
-      - name: Check coverage
+
+      - name: Coverage summary
+        if: github.event_name == 'push'
         run: |
-          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "Coverage ${COVERAGE}% is below 80% threshold"
+          echo "## Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "**Total:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+
+      - name: Coverage delta
+        if: github.event_name == 'pull_request'
+        run: |
+          PR_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+
+          git stash --include-untracked || true
+          git checkout ${{ github.base_ref }}
+          go test -race -coverprofile=base_coverage.out -covermode=atomic ./... 2>/dev/null || true
+
+          if [ -f base_coverage.out ]; then
+            BASE_COVERAGE=$(go tool cover -func=base_coverage.out | grep total | awk '{print $3}' | sed 's/%//' || echo "0")
+          else
+            BASE_COVERAGE="0"
+          fi
+
+          DELTA=$(echo "$PR_COVERAGE - $BASE_COVERAGE" | bc -l)
+          DELTA_SIGN=""
+          if (( $(echo "$DELTA > 0" | bc -l) )); then
+            DELTA_SIGN="+"
+          fi
+
+          echo "## Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | Coverage | Delta |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Base (\`${{ github.base_ref }}\`) | ${BASE_COVERAGE}% | |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR | ${PR_COVERAGE}% | ${DELTA_SIGN}${DELTA}% |" >> $GITHUB_STEP_SUMMARY
+
+          if (( $(echo "$PR_COVERAGE < $BASE_COVERAGE" | bc -l) )); then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> [!CAUTION]" >> $GITHUB_STEP_SUMMARY
+            echo "> Coverage decreased by ${DELTA}%" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Coverage decreased from ${BASE_COVERAGE}% to ${PR_COVERAGE}% (${DELTA}%)"
             exit 1
+          elif (( $(echo "$DELTA > 0" | bc -l) )); then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> [!TIP]" >> $GITHUB_STEP_SUMMARY
+            echo "> Coverage increased by ${DELTA_SIGN}${DELTA}%" >> $GITHUB_STEP_SUMMARY
           fi
