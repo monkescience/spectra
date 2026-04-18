@@ -99,10 +99,10 @@ func (testPropagator) Fields() []string {
 func TestNew(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when - run in subtest so span completes.
+	// when: a test is created and logs a message in a subtest
 	t.Run("creates_span", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -112,7 +112,7 @@ func TestNew(t *testing.T) {
 		st.Log("test message")
 	})
 
-	// then - check spans after subtest completes.
+	// then: the span for the subtest is recorded
 	spans := exporter.GetSpans()
 	if len(spans) == 0 {
 		t.Fatal("expected at least one span")
@@ -136,10 +136,10 @@ func TestNew(t *testing.T) {
 func TestT_Log(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when
+	// when: the test logs messages
 	t.Run("logs_message", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -150,7 +150,7 @@ func TestT_Log(t *testing.T) {
 		st.Logf("formatted %s", "message")
 	})
 
-	// then
+	// then: the messages are recorded as span log events
 	spans := exporter.GetSpans()
 	if len(spans) == 0 {
 		t.Fatal("expected at least one span")
@@ -179,10 +179,10 @@ func TestT_Log(t *testing.T) {
 func TestT_SetAttributes(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when
+	// when: the test sets custom attributes
 	t.Run("sets_attributes", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -195,7 +195,7 @@ func TestT_SetAttributes(t *testing.T) {
 		)
 	})
 
-	// then
+	// then: the attributes are recorded on the span
 	spans := exporter.GetSpans()
 	if len(spans) == 0 {
 		t.Fatal("expected at least one span")
@@ -229,10 +229,10 @@ func TestT_SetAttributes(t *testing.T) {
 func TestT_AddEvent(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when
+	// when: the test adds a custom event
 	t.Run("adds_event", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -242,7 +242,7 @@ func TestT_AddEvent(t *testing.T) {
 		st.AddEvent("custom.event", attribute.String("key", "value"))
 	})
 
-	// then
+	// then: the event is recorded on the span
 	spans := exporter.GetSpans()
 	if len(spans) == 0 {
 		t.Fatal("expected at least one span")
@@ -276,7 +276,7 @@ func TestT_AddEvent(t *testing.T) {
 func TestT_Context(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra test wrapper
 	_, sp := setupTestTracer(t)
 
 	st, err := sp.New(t)
@@ -284,10 +284,10 @@ func TestT_Context(t *testing.T) {
 		t.Fatalf("failed to create test: %v", err)
 	}
 
-	// when
+	// when: the caller asks for the test context
 	ctx := st.Context()
 
-	// then
+	// then: a non-nil context is returned
 	if ctx == nil {
 		t.Error("expected non-nil context")
 	}
@@ -296,7 +296,7 @@ func TestT_Context(t *testing.T) {
 func TestT_Span(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra test wrapper
 	_, sp := setupTestTracer(t)
 
 	st, err := sp.New(t)
@@ -304,10 +304,10 @@ func TestT_Span(t *testing.T) {
 		t.Fatalf("failed to create test: %v", err)
 	}
 
-	// when
+	// when: the caller asks for the test span
 	span := st.Span()
 
-	// then
+	// then: a non-nil span with a valid context is returned
 	if span == nil {
 		t.Error("expected non-nil span")
 	}
@@ -320,10 +320,10 @@ func TestT_Span(t *testing.T) {
 func TestT_Run(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when - run parent and subtest.
+	// when: the test runs a nested subtest
 	t.Run("parent", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -335,7 +335,7 @@ func TestT_Run(t *testing.T) {
 		})
 	})
 
-	// then
+	// then: both the parent span and the child span are recorded
 	spans := exporter.GetSpans()
 	if len(spans) < 2 {
 		t.Fatalf("expected at least 2 spans (parent + subtest), got %d", len(spans))
@@ -367,10 +367,10 @@ func TestT_Run(t *testing.T) {
 func TestT_StartSpan(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when
+	// when: the test starts a custom child span
 	t.Run("creates_child_span", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -385,7 +385,7 @@ func TestT_StartSpan(t *testing.T) {
 		}
 	})
 
-	// then
+	// then: the child span is recorded with the given name
 	spans := exporter.GetSpans()
 	found := false
 
@@ -405,10 +405,10 @@ func TestT_StartSpan(t *testing.T) {
 func TestT_Setup(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when
+	// when: the test runs a setup block
 	t.Run("runs_setup", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -426,7 +426,7 @@ func TestT_Setup(t *testing.T) {
 		}
 	})
 
-	// then
+	// then: the setup span is recorded
 	spans := exporter.GetSpans()
 	found := false
 
@@ -446,11 +446,11 @@ func TestT_Setup(t *testing.T) {
 func TestT_Teardown(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 	teardownCalled := false
 
-	// when
+	// when: the test registers a teardown block
 	t.Run("runs_teardown", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -467,7 +467,7 @@ func TestT_Teardown(t *testing.T) {
 		}
 	})
 
-	// then - after subtest completes, teardown should have run.
+	// then: the teardown span is recorded and the teardown function ran
 	if !teardownCalled {
 		t.Error("expected teardown to be called after test cleanup")
 	}
@@ -491,10 +491,10 @@ func TestT_Teardown(t *testing.T) {
 func TestT_SpanStatus_Pass(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance with an in-memory tracer
 	exporter, sp := setupTestTracer(t)
 
-	// when - run a passing test.
+	// when: the test runs without failing
 	t.Run("passing", func(innerT *testing.T) {
 		_, err := sp.New(innerT)
 		if err != nil {
@@ -503,7 +503,7 @@ func TestT_SpanStatus_Pass(t *testing.T) {
 		// Test passes without any errors.
 	})
 
-	// then
+	// then: the span records status Ok
 	spans := exporter.GetSpans()
 	found := false
 
@@ -523,11 +523,11 @@ func TestT_SpanStatus_Pass(t *testing.T) {
 func TestT_Error(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Error")
 
-	// when
+	// when: the test calls Error and Errorf
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -537,7 +537,7 @@ func TestT_Error(t *testing.T) {
 	st.Errorf("formatted error: %s", "details")
 	mock.runCleanups()
 
-	// then
+	// then: each call is recorded as an error-level log event and the mock is failed
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -574,11 +574,11 @@ func TestT_Error(t *testing.T) {
 func TestT_Fatal(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Fatal")
 
-	// when
+	// when: the test calls Fatal
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -587,7 +587,7 @@ func TestT_Fatal(t *testing.T) {
 	st.Fatal("fatal error")
 	mock.runCleanups()
 
-	// then
+	// then: a fatal log event is recorded and the span status is Error
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -624,11 +624,11 @@ func TestT_Fatal(t *testing.T) {
 func TestT_Fatalf(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Fatalf")
 
-	// when
+	// when: the test calls Fatalf
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -637,7 +637,7 @@ func TestT_Fatalf(t *testing.T) {
 	st.Fatalf("fatal error: %s", "formatted")
 	mock.runCleanups()
 
-	// then
+	// then: a fatal log event is recorded
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -670,11 +670,11 @@ func TestT_Fatalf(t *testing.T) {
 func TestT_Skip(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Skip")
 
-	// when
+	// when: the test calls Skip
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -683,7 +683,7 @@ func TestT_Skip(t *testing.T) {
 	st.Skip("skipping test")
 	mock.runCleanups()
 
-	// then
+	// then: a skip log event is recorded and the mock is marked skipped
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -720,11 +720,11 @@ func TestT_Skip(t *testing.T) {
 func TestT_Skipf(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_Skipf")
 
-	// when
+	// when: the test calls Skipf
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -733,7 +733,7 @@ func TestT_Skipf(t *testing.T) {
 	st.Skipf("skipping: %s", "reason")
 	mock.runCleanups()
 
-	// then
+	// then: a skip log event is recorded
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -766,10 +766,10 @@ func TestT_Skipf(t *testing.T) {
 func TestT_Parallel(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra test wrapper
 	_, sp := setupTestTracer(t)
 
-	// when - run in subtest with Parallel.
+	// when: the test marks itself Parallel
 	t.Run("parallel_test", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -780,19 +780,20 @@ func TestT_Parallel(t *testing.T) {
 		st.Log("running in parallel")
 	})
 
-	// then - test passes if no panic occurred.
+	// then: the call completes without panicking
 }
 
 func TestInit(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: a service name and an insecure gRPC endpoint
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithInsecure(),
 	)
-	// then - should return a valid Spectra instance.
+	// then: a valid Spectra instance is returned
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -801,19 +802,19 @@ func TestInit(t *testing.T) {
 		t.Error("expected non-nil Spectra instance")
 	}
 
-	// Cleanup.
 	sp.Shutdown()
 }
 
 func TestInit_HTTP(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: a service name and an HTTP endpoint
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("http://localhost:4318"),
 	)
-	// then - should return a valid Spectra instance.
+	// then: a valid Spectra instance is returned
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -828,12 +829,13 @@ func TestInit_HTTP(t *testing.T) {
 func TestInit_HTTPS(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: a service name and an HTTPS endpoint
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("https://localhost:4318"),
 	)
-	// then - should return a valid Spectra instance.
+	// then: a valid Spectra instance is returned
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -848,13 +850,14 @@ func TestInit_HTTPS(t *testing.T) {
 func TestInit_HTTPS_Insecure(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: an HTTPS endpoint paired with WithInsecure to skip cert verification
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("https://localhost:4318"),
 		spectra.WithInsecure(),
 	)
-	// then - should return a valid Spectra instance.
+	// then: a valid Spectra instance is returned
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -869,13 +872,14 @@ func TestInit_HTTPS_Insecure(t *testing.T) {
 func TestInit_InvalidEndpoint(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when - endpoint without scheme
+	// given: an endpoint without a scheme
+	// when: spectra.Init is called
 	_, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("localhost:4317"),
 	)
 
-	// then - should return error
+	// then: an error is returned
 	if err == nil {
 		t.Fatal("expected error for endpoint without scheme")
 	}
@@ -884,13 +888,14 @@ func TestInit_InvalidEndpoint(t *testing.T) {
 func TestInit_DisableTraces(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: WithoutTraces is passed alongside the required options
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithoutTraces(),
 	)
-	// then - should return a valid Spectra instance even with traces disabled.
+	// then: a valid Spectra instance is returned even with traces disabled
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -905,7 +910,7 @@ func TestInit_DisableTraces(t *testing.T) {
 func TestInit_WithoutTraces_DisablesSpanCreation(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance initialized with WithoutTraces
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),
@@ -929,7 +934,7 @@ func TestInit_WithoutTraces_DisablesSpanCreation(t *testing.T) {
 
 	mock := newMockTB("TestInit_WithoutTraces_DisablesSpanCreation")
 
-	// when
+	// when: a test wrapper is created and logs a message
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -938,7 +943,7 @@ func TestInit_WithoutTraces_DisablesSpanCreation(t *testing.T) {
 	st.Log("this should not create a span")
 	mock.runCleanups()
 
-	// then
+	// then: no spans are recorded by the exporter
 	spans := exporter.GetSpans()
 	if len(spans) != 0 {
 		t.Fatalf("expected no spans when traces are disabled, got %d", len(spans))
@@ -948,13 +953,14 @@ func TestInit_WithoutTraces_DisablesSpanCreation(t *testing.T) {
 func TestInit_DisableMetrics(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: WithoutMetrics is passed alongside the required options
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 		spectra.WithoutMetrics(),
 	)
-	// then - should return a valid Spectra instance even with metrics disabled.
+	// then: a valid Spectra instance is returned even with metrics disabled
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -969,7 +975,7 @@ func TestInit_DisableMetrics(t *testing.T) {
 func TestInit_DisableLogs(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance initialized with WithoutLogs
 	exporter, _ := setupTestTracer(t)
 
 	sp, err := spectra.Init(
@@ -983,7 +989,7 @@ func TestInit_DisableLogs(t *testing.T) {
 
 	defer sp.Shutdown()
 
-	// when
+	// when: the test logs a message
 	t.Run("logs_disabled", func(innerT *testing.T) {
 		st, err := sp.New(innerT)
 		if err != nil {
@@ -993,7 +999,7 @@ func TestInit_DisableLogs(t *testing.T) {
 		st.Log("this should not appear as span event")
 	})
 
-	// then - span should exist but without log events.
+	// then: the span is recorded but carries no log events
 	spans := exporter.GetSpans()
 
 	for _, s := range spans {
@@ -1012,12 +1018,13 @@ func TestInit_DisableLogs(t *testing.T) {
 func TestSpectraInit(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when
+	// given: the minimum required options
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
 	)
-	// then
+	// then: a non-nil *Spectra is returned without error
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1032,7 +1039,7 @@ func TestSpectraInit(t *testing.T) {
 func TestSpectraShutdownIdempotent(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: an initialized spectra instance
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
@@ -1041,23 +1048,23 @@ func TestSpectraShutdownIdempotent(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// when - call Shutdown twice
+	// when: Shutdown is called twice
 	sp.Shutdown()
-	sp.Shutdown() // should not panic
+	sp.Shutdown()
 
-	// then - test passes if no panic occurred
+	// then: the second call is a no-op and does not panic
 }
 
 func TestNewReturnsError(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given - nil Spectra, not initialized
+	// given: a nil *Spectra receiver
 	var sp *spectra.Spectra
 
-	// when
+	// when: New is called
 	_, err := sp.New(t)
 
-	// then
+	// then: ErrNotInitialized is returned
 	if !errors.Is(err, spectra.ErrNotInitialized) {
 		t.Errorf("expected ErrNotInitialized, got %v", err)
 	}
@@ -1066,7 +1073,7 @@ func TestNewReturnsError(t *testing.T) {
 func TestNewAfterShutdown(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance that has been shut down
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
@@ -1075,11 +1082,11 @@ func TestNewAfterShutdown(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// when - shutdown then try to create new test
+	// when: New is called after Shutdown
 	sp.Shutdown()
 	_, err = sp.New(t)
 
-	// then
+	// then: ErrAlreadyShutdown is returned
 	if !errors.Is(err, spectra.ErrAlreadyShutdown) {
 		t.Errorf("expected ErrAlreadyShutdown, got %v", err)
 	}
@@ -1088,13 +1095,14 @@ func TestNewAfterShutdown(t *testing.T) {
 func TestInitMetrics(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given/when - Init with metrics enabled (default)
+	// given: metrics enabled by default and traces disabled to isolate metrics
+	// when: spectra.Init is called
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
-		spectra.WithoutTraces(), // disable traces to isolate metrics
+		spectra.WithoutTraces(),
 	)
-	// then - should succeed (metrics initialization happens internally)
+	// then: Init succeeds and the metrics instruments are created internally
 	if err != nil {
 		t.Fatalf("unexpected error during init with metrics: %v", err)
 	}
@@ -1109,7 +1117,7 @@ func TestInitMetrics(t *testing.T) {
 func TestShutdown_RestoresGlobalProviders(t *testing.T) {
 	// Tests modify global providers - cannot run in parallel.
 
-	// given
+	// given: pre-existing OTEL globals and a spectra instance opted into WithSetGlobalProviders
 	originalTracerProvider := tracenoop.NewTracerProvider()
 	originalMeterProvider := metricnoop.NewMeterProvider()
 	originalPropagator := testPropagator{}
@@ -1127,10 +1135,10 @@ func TestShutdown_RestoresGlobalProviders(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// when
+	// when: Shutdown is called
 	sp.Shutdown()
 
-	// then
+	// then: the original providers and propagator are restored
 	if !reflect.DeepEqual(otel.GetTracerProvider(), originalTracerProvider) {
 		t.Error("expected tracer provider to be restored on shutdown")
 	}
@@ -1147,13 +1155,14 @@ func TestShutdown_RestoresGlobalProviders(t *testing.T) {
 func TestInit_DoesNotTouchGlobals_ByDefault(t *testing.T) {
 	// Tests modify global providers - cannot run in parallel.
 
-	// given
+	// given: pre-existing OTEL global providers
 	originalTracerProvider := tracenoop.NewTracerProvider()
 	originalMeterProvider := metricnoop.NewMeterProvider()
 
 	otel.SetTracerProvider(originalTracerProvider)
 	otel.SetMeterProvider(originalMeterProvider)
 
+	// when: spectra.Init is called without WithSetGlobalProviders
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
@@ -1164,7 +1173,7 @@ func TestInit_DoesNotTouchGlobals_ByDefault(t *testing.T) {
 
 	t.Cleanup(sp.Shutdown)
 
-	// then — globals are untouched because SetGlobalProviders was not opted in
+	// then: the globals remain untouched
 	if !reflect.DeepEqual(otel.GetTracerProvider(), originalTracerProvider) {
 		t.Error("expected tracer provider to remain untouched when WithSetGlobalProviders is not set")
 	}
@@ -1177,11 +1186,11 @@ func TestInit_DoesNotTouchGlobals_ByDefault(t *testing.T) {
 func TestT_FailNow(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_FailNow")
 
-	// when
+	// when: the test calls FailNow
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -1190,7 +1199,7 @@ func TestT_FailNow(t *testing.T) {
 	st.FailNow()
 	mock.runCleanups()
 
-	// then
+	// then: a fatal log event is recorded, the span status is Error, and the mock is failed
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -1233,11 +1242,11 @@ func TestT_FailNow(t *testing.T) {
 func TestT_SkipNow(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
-	// given
+	// given: a spectra instance wrapping a mock testing.TB
 	exporter, sp := setupTestTracer(t)
 	mock := newMockTB("TestT_SkipNow")
 
-	// when
+	// when: the test calls SkipNow
 	st, err := sp.New(mock)
 	if err != nil {
 		t.Fatalf("failed to create test: %v", err)
@@ -1246,7 +1255,7 @@ func TestT_SkipNow(t *testing.T) {
 	st.SkipNow()
 	mock.runCleanups()
 
-	// then
+	// then: a skip log event is recorded and the mock is marked skipped
 	spans := exporter.GetSpans()
 
 	var targetSpan tracetest.SpanStub
@@ -1287,7 +1296,7 @@ func TestT_SkipNow(t *testing.T) {
 }
 
 func TestInit_WithLogger_RoutesShutdownErrors(t *testing.T) {
-	// given
+	// given: a spectra instance configured with a custom slog.Logger and a dead endpoint
 	var buf bytes.Buffer
 
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -1303,10 +1312,10 @@ func TestInit_WithLogger_RoutesShutdownErrors(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 
-	// when
+	// when: Shutdown is called and fails to flush telemetry
 	sp.Shutdown()
 
-	// then — shutdown against a non-listening endpoint must surface via slog
+	// then: the shutdown error is emitted through the configured slog.Logger
 	output := buf.String()
 	if len(output) == 0 {
 		t.Fatal("expected shutdown errors to be logged via WithLogger")
