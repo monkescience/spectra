@@ -19,6 +19,9 @@ OpenTelemetry instrumentation for Go tests. Make your tests observable and trace
 - Call `sp.Shutdown()` instead of `shutdown()` for cleanup
 - `spectra.New(t)` is now `sp.New(t)` and returns `(*T, error)` instead of `*T`
 - Must check error from `sp.New(t)` before using the returned `*T`
+- OTEL global providers (`otel.SetTracerProvider`, `otel.SetMeterProvider`,
+  `otel.SetTextMapPropagator`) are no longer mutated by default. Pass
+  `spectra.WithSetGlobalProviders()` to opt in to the previous behavior.
 
 See the usage examples below for the new patterns.
 
@@ -121,6 +124,9 @@ func TestWithFixtures(t *testing.T) {
 | `WithEndpoint(endpoint)` | OTLP collector endpoint with scheme (required) |
 | `WithInsecure()` | gRPC: disable TLS; HTTPS: skip cert verification |
 | `WithShutdownTimeout(d)` | Graceful shutdown timeout (default: 5s) |
+| `WithLogger(logger)` | `*slog.Logger` for spectra's own operational messages (default: `slog.Default()`) |
+| `WithTracerProvider(tp)` | Use an existing `trace.TracerProvider` instead of creating one |
+| `WithSetGlobalProviders()` | Install spectra's providers as OTEL globals (off by default) |
 | `WithoutTraces()` | Disable trace collection |
 | `WithoutMetrics()` | Disable metrics collection |
 | `WithoutLogs()` | Disable log capture as span events |

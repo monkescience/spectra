@@ -93,6 +93,10 @@ type config struct {
 
 	// DisableLogs disables log capture as span events.
 	DisableLogs bool
+
+	// SetGlobalProviders installs spectra's providers as OTEL globals.
+	// Off by default; opt-in via WithSetGlobalProviders.
+	SetGlobalProviders bool
 }
 
 // Init initializes OpenTelemetry providers for test instrumentation.
@@ -181,7 +185,9 @@ func configureTracing(
 			sp.tracerProvider = tp
 		}
 
-		setTracingGlobals(cfg.TracerProvider, restoreGlobals)
+		if cfg.SetGlobalProviders {
+			setTracingGlobals(cfg.TracerProvider, restoreGlobals)
+		}
 
 		return nil
 	}
@@ -194,7 +200,9 @@ func configureTracing(
 	sp.tracerProvider = tp
 	sp.tracer = tp.Tracer("spectra")
 
-	setTracingGlobals(tp, restoreGlobals)
+	if cfg.SetGlobalProviders {
+		setTracingGlobals(tp, restoreGlobals)
+	}
 
 	return nil
 }
@@ -218,7 +226,9 @@ func configureMetrics(
 		return fmt.Errorf("init metrics: %w", err)
 	}
 
-	setMeterGlobals(mp, restoreGlobals)
+	if cfg.SetGlobalProviders {
+		setMeterGlobals(mp, restoreGlobals)
+	}
 
 	return nil
 }

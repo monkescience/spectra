@@ -1121,6 +1121,7 @@ func TestShutdown_RestoresGlobalProviders(t *testing.T) {
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test-service"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
+		spectra.WithSetGlobalProviders(),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1140,6 +1141,36 @@ func TestShutdown_RestoresGlobalProviders(t *testing.T) {
 
 	if _, ok := otel.GetTextMapPropagator().(testPropagator); !ok {
 		t.Error("expected text map propagator to be restored on shutdown")
+	}
+}
+
+func TestInit_DoesNotTouchGlobals_ByDefault(t *testing.T) {
+	// Tests modify global providers - cannot run in parallel.
+
+	// given
+	originalTracerProvider := tracenoop.NewTracerProvider()
+	originalMeterProvider := metricnoop.NewMeterProvider()
+
+	otel.SetTracerProvider(originalTracerProvider)
+	otel.SetMeterProvider(originalMeterProvider)
+
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Cleanup(sp.Shutdown)
+
+	// then — globals are untouched because SetGlobalProviders was not opted in
+	if !reflect.DeepEqual(otel.GetTracerProvider(), originalTracerProvider) {
+		t.Error("expected tracer provider to remain untouched when WithSetGlobalProviders is not set")
+	}
+
+	if !reflect.DeepEqual(otel.GetMeterProvider(), originalMeterProvider) {
+		t.Error("expected meter provider to remain untouched when WithSetGlobalProviders is not set")
 	}
 }
 
