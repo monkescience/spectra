@@ -6,12 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GOLANGCI_LINT_VERSION: v2.11.4 # renovate: datasource=github-releases depName=golangci/golangci-lint
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -33,29 +41,30 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests with coverage
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: make test
 
       - name: Build
-        run: go build ./...
+        run: make build
 
       - name: Coverage summary
         if: github.event_name == 'push'
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          COVERAGE=$(go tool cover -func=tests/coverage/coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "## Coverage" >> $GITHUB_STEP_SUMMARY
           echo "**Total:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
 
       - name: Coverage delta
         if: github.event_name == 'pull_request'
         run: |
-          PR_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          PR_COVERAGE=$(go tool cover -func=tests/coverage/coverage.out | grep total | awk '{print $3}' | sed 's/%//')
 
           git stash --include-untracked || true
           git checkout ${{ github.base_ref }}
-          go test -race -coverprofile=base_coverage.out -covermode=atomic ./... 2>/dev/null || true
+          make test 2>/dev/null || true
+          mv tests/coverage/coverage.out tests/coverage/base_coverage.out 2>/dev/null || true
 
-          if [ -f base_coverage.out ]; then
-            BASE_COVERAGE=$(go tool cover -func=base_coverage.out | grep total | awk '{print $3}' | sed 's/%//' || echo "0")
+          if [ -f tests/coverage/base_coverage.out ]; then
+            BASE_COVERAGE=$(go tool cover -func=tests/coverage/base_coverage.out | grep total | awk '{print $3}' | sed 's/%//' || echo "0")
           else
             BASE_COVERAGE="0"
           fi
