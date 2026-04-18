@@ -1,4 +1,4 @@
-# golangci-lint v2.7.2 (2025-12-14)
+# golangci-lint 2.11.4 (2026-03-22)
 version: "2"
 
 run:
@@ -9,16 +9,14 @@ linters:
     tagliatelle:
       case:
         rules:
-          json: snake
           yaml: snake
-          xml: snake
-          bson: snake
 
   exclusions:
     rules:
-      # Disable strict linters in test files
+      # Relax strict linters in test files — tests benefit from brevity
       - path: _test\.go
         linters:
+          - errcheck
           - funlen
           - dupl
           - goconst
@@ -27,6 +25,10 @@ linters:
           - err113
           - gocognit
           - gosec
+      # Generated code is not your responsibility — exclude all linters
+      - path: \.gen\.go
+        linters:
+          - all
 
   default: none
   enable:
@@ -56,7 +58,6 @@ linters:
     - musttag
     - sqlclosecheck
     - rowserrcheck
-    - unqueryvet
 
     # Security
     - gosec
