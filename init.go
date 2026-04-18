@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const defaultShutdownTimeout = 5 * time.Second
@@ -74,6 +74,9 @@ type config struct {
 	// Insecure disables TLS for the OTLP exporter.
 	Insecure bool
 
+	// TracerProvider overrides the default trace provider.
+	TracerProvider trace.TracerProvider
+
 	// ShutdownTimeout is the timeout for graceful shutdown.
 	// Defaults to 5 seconds.
 	ShutdownTimeout time.Duration
@@ -121,8 +124,14 @@ func Init(opts ...Option) (*Spectra, error) {
 	}
 
 	sp := &Spectra{
-		config:      cfg,
-		initialized: true,
+		config: cfg,
+	}
+
+	restoreGlobals := make([]func(), 0)
+	sp.restoreGlobals = func() {
+		for i := len(restoreGlobals) - 1; i >= 0; i-- {
+			restoreGlobals[i]()
+		}
 	}
 
 	ctx := context.Background()
@@ -133,25 +142,81 @@ func Init(opts ...Option) (*Spectra, error) {
 	}
 
 	if !cfg.DisableTraces {
-		tp, _, err := setupTracing(ctx, cfg, res)
+		err = configureTracing(ctx, cfg, res, sp, &restoreGlobals)
 		if err != nil {
-			return nil, fmt.Errorf("setup tracing: %w", err)
+			return nil, err
 		}
-
-		sp.tracerProvider = tp
-		sp.tracer = tp.Tracer("spectra")
 	}
 
 	if !cfg.DisableMetrics {
-		mp, _, err := setupMetrics(ctx, cfg, res, sp)
+		err = configureMetrics(ctx, cfg, res, sp, &restoreGlobals)
 		if err != nil {
-			return nil, fmt.Errorf("setup metrics: %w", err)
-		}
+			sp.Shutdown()
 
-		sp.meterProvider = mp
+			return nil, err
+		}
 	}
 
+	sp.initialized = true
+
 	return sp, nil
+}
+
+func configureTracing(
+	ctx context.Context,
+	cfg config,
+	res *resource.Resource,
+	sp *Spectra,
+	restoreGlobals *[]func(),
+) error {
+	if cfg.TracerProvider != nil {
+		sp.tracer = cfg.TracerProvider.Tracer("spectra")
+
+		tp, ok := cfg.TracerProvider.(*sdktrace.TracerProvider)
+		if ok {
+			sp.tracerProvider = tp
+		}
+
+		setTracingGlobals(cfg.TracerProvider, restoreGlobals)
+
+		return nil
+	}
+
+	tp, err := setupTracing(ctx, cfg, res)
+	if err != nil {
+		return fmt.Errorf("setup tracing: %w", err)
+	}
+
+	sp.tracerProvider = tp
+	sp.tracer = tp.Tracer("spectra")
+
+	setTracingGlobals(tp, restoreGlobals)
+
+	return nil
+}
+
+func configureMetrics(
+	ctx context.Context,
+	cfg config,
+	res *resource.Resource,
+	sp *Spectra,
+	restoreGlobals *[]func(),
+) error {
+	mp, err := setupMetrics(ctx, cfg, res)
+	if err != nil {
+		return fmt.Errorf("setup metrics: %w", err)
+	}
+
+	sp.meterProvider = mp
+
+	err = sp.initMetrics()
+	if err != nil {
+		return fmt.Errorf("init metrics: %w", err)
+	}
+
+	setMeterGlobals(mp, restoreGlobals)
+
+	return nil
 }
 
 // createResource creates the OTEL resource with service info.
@@ -173,11 +238,11 @@ func createResource(cfg config) (*resource.Resource, error) {
 	return res, nil
 }
 
-// setupTracing configures the trace provider and returns a shutdown function.
-func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdktrace.TracerProvider, func(), error) {
+// setupTracing configures the trace provider.
+func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdktrace.TracerProvider, error) {
 	proto, endpoint, err := parseProtocol(cfg.Endpoint)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var exporter sdktrace.SpanExporter
@@ -207,38 +272,22 @@ func setupTracing(ctx context.Context, cfg config, res *resource.Resource) (*sdk
 	}
 
 	if err != nil {
-		return nil, nil, fmt.Errorf("create trace exporter: %w", err)
+		return nil, fmt.Errorf("create trace exporter: %w", err)
 	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
 	)
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	//nolint:contextcheck // Shutdown uses fresh context with timeout, not the init context.
-	return tp, func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-		defer cancel()
-
-		err := tp.Shutdown(shutdownCtx)
-		if err != nil {
-			log.Printf("spectra: failed to shutdown tracer provider: %v", err)
-		}
-	}, nil
+	return tp, nil
 }
 
-// setupMetrics configures the meter provider and returns a shutdown function.
-func setupMetrics(
-	ctx context.Context,
-	cfg config,
-	res *resource.Resource,
-	sp *Spectra,
-) (*metric.MeterProvider, func(), error) {
+// setupMetrics configures the meter provider.
+func setupMetrics(ctx context.Context, cfg config, res *resource.Resource) (*metric.MeterProvider, error) {
 	proto, endpoint, err := parseProtocol(cfg.Endpoint)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var exporter metric.Exporter
@@ -268,30 +317,15 @@ func setupMetrics(
 	}
 
 	if err != nil {
-		return nil, nil, fmt.Errorf("create metric exporter: %w", err)
+		return nil, fmt.Errorf("create metric exporter: %w", err)
 	}
 
 	mp := metric.NewMeterProvider(
 		metric.WithReader(metric.NewPeriodicReader(exporter)),
 		metric.WithResource(res),
 	)
-	otel.SetMeterProvider(mp)
 
-	err = sp.initMetrics()
-	if err != nil {
-		return nil, nil, fmt.Errorf("init metrics: %w", err)
-	}
-
-	//nolint:contextcheck // Shutdown uses fresh context with timeout, not the init context.
-	return mp, func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-		defer cancel()
-
-		err := mp.Shutdown(shutdownCtx)
-		if err != nil {
-			log.Printf("spectra: failed to shutdown meter provider: %v", err)
-		}
-	}, nil
+	return mp, nil
 }
 
 // validateConfig validates required fields and sets defaults.
@@ -309,4 +343,32 @@ func validateConfig(cfg config) (config, error) {
 	}
 
 	return cfg, nil
+}
+
+func setTracingGlobals(tp trace.TracerProvider, restoreGlobals *[]func()) {
+	previousTracerProvider := otel.GetTracerProvider()
+	previousPropagator := otel.GetTextMapPropagator()
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	*restoreGlobals = append(
+		*restoreGlobals,
+		func() {
+			otel.SetTextMapPropagator(previousPropagator)
+		},
+		func() {
+			otel.SetTracerProvider(previousTracerProvider)
+		},
+	)
+}
+
+func setMeterGlobals(mp *metric.MeterProvider, restoreGlobals *[]func()) {
+	previousMeterProvider := otel.GetMeterProvider()
+
+	otel.SetMeterProvider(mp)
+
+	*restoreGlobals = append(*restoreGlobals, func() {
+		otel.SetMeterProvider(previousMeterProvider)
+	})
 }

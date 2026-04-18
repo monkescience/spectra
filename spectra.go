@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/sdk/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 const (
@@ -49,8 +49,10 @@ const (
 type Spectra struct {
 	config         config
 	tracerProvider *sdktrace.TracerProvider
-	meterProvider  *metric.MeterProvider
+	meterProvider  *sdkmetric.MeterProvider
 	tracer         trace.Tracer
+	metrics        *Metrics
+	restoreGlobals func()
 	shutdownOnce   sync.Once
 	initialized    bool
 	shutdown       bool
@@ -78,6 +80,10 @@ func (s *Spectra) Shutdown() {
 			if err != nil {
 				log.Printf("spectra: failed to shutdown meter provider: %v", err)
 			}
+		}
+
+		if s.restoreGlobals != nil {
+			s.restoreGlobals()
 		}
 	})
 }
@@ -129,7 +135,7 @@ func (s *Spectra) New(tb testing.TB) (*T, error) {
 
 	tracer := s.tracer
 	if tracer == nil {
-		tracer = otel.Tracer("spectra")
+		tracer = noop.NewTracerProvider().Tracer("spectra")
 	}
 
 	ctx, span := tracer.Start(
@@ -157,7 +163,7 @@ func (s *Spectra) New(tb testing.TB) (*T, error) {
 
 		span.End()
 
-		recordTestMetrics(ctx, tb.Name(), duration, status)
+		s.recordTestMetrics(ctx, tb.Name(), duration, status)
 	})
 
 	return t, nil

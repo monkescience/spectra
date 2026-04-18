@@ -1,6 +1,6 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
-.PHONY: test lint fmt clean mod-tidy coverage help
+.PHONY: test lint fmt build clean mod-tidy coverage help
 
 help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
@@ -11,6 +11,9 @@ test: ## Run tests
 coverage: ## Run tests with coverage
 	go test -race -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -html=coverage.out -o coverage.html
+
+build: ## Build packages
+	go build ./...
 
 lint: ## Run linter
 	golangci-lint run --timeout=5m

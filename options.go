@@ -1,6 +1,10 @@
 package spectra
 
-import "time"
+import (
+	"time"
+
+	"go.opentelemetry.io/otel/trace"
+)
 
 // Option configures spectra initialization.
 type Option func(*config)
@@ -23,6 +27,14 @@ func WithEndpoint(endpoint string) Option {
 func WithInsecure() Option {
 	return func(c *config) {
 		c.Insecure = true
+	}
+}
+
+// WithTracerProvider sets a custom tracer provider.
+// When provided, spectra skips creating an OTLP trace exporter.
+func WithTracerProvider(provider trace.TracerProvider) Option {
+	return func(c *config) {
+		c.TracerProvider = provider
 	}
 }
 

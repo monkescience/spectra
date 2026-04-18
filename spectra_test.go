@@ -3,14 +3,18 @@ package spectra_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/monkescience/spectra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 func setupTestTracer(t *testing.T) (*tracetest.InMemoryExporter, *spectra.Spectra) {
@@ -25,7 +29,7 @@ func setupTestTracer(t *testing.T) (*tracetest.InMemoryExporter, *spectra.Spectr
 	sp, err := spectra.Init(
 		spectra.WithServiceName("test"),
 		spectra.WithEndpoint("grpc://localhost:4317"),
-		spectra.WithoutTraces(),
+		spectra.WithTracerProvider(tp),
 		spectra.WithoutMetrics(),
 	)
 	if err != nil {
@@ -76,6 +80,18 @@ func (m *mockTB) runCleanups() {
 	for i := len(m.cleanups) - 1; i >= 0; i-- {
 		m.cleanups[i]()
 	}
+}
+
+type testPropagator struct{}
+
+func (testPropagator) Inject(_ context.Context, _ propagation.TextMapCarrier) {}
+
+func (testPropagator) Extract(ctx context.Context, _ propagation.TextMapCarrier) context.Context {
+	return ctx
+}
+
+func (testPropagator) Fields() []string {
+	return nil
 }
 
 func TestNew(t *testing.T) {
@@ -884,6 +900,49 @@ func TestInit_DisableTraces(t *testing.T) {
 	sp.Shutdown()
 }
 
+func TestInit_WithoutTraces_DisablesSpanCreation(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSyncer(exporter),
+	)
+	otel.SetTracerProvider(tp)
+
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+		spectra.WithoutTraces(),
+		spectra.WithoutMetrics(),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Cleanup(func() {
+		sp.Shutdown()
+		_ = tp.Shutdown(context.Background())
+	})
+
+	mock := newMockTB("TestInit_WithoutTraces_DisablesSpanCreation")
+
+	// when
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
+
+	st.Log("this should not create a span")
+	mock.runCleanups()
+
+	// then
+	spans := exporter.GetSpans()
+	if len(spans) != 0 {
+		t.Fatalf("expected no spans when traces are disabled, got %d", len(spans))
+	}
+}
+
 func TestInit_DisableMetrics(t *testing.T) {
 	// Tests modify global tracer provider - cannot run in parallel.
 
@@ -1043,6 +1102,43 @@ func TestInitMetrics(t *testing.T) {
 	}
 
 	defer sp.Shutdown()
+}
+
+func TestShutdown_RestoresGlobalProviders(t *testing.T) {
+	// Tests modify global providers - cannot run in parallel.
+
+	// given
+	originalTracerProvider := tracenoop.NewTracerProvider()
+	originalMeterProvider := metricnoop.NewMeterProvider()
+	originalPropagator := testPropagator{}
+
+	otel.SetTracerProvider(originalTracerProvider)
+	otel.SetMeterProvider(originalMeterProvider)
+	otel.SetTextMapPropagator(originalPropagator)
+
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test-service"),
+		spectra.WithEndpoint("grpc://localhost:4317"),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// when
+	sp.Shutdown()
+
+	// then
+	if !reflect.DeepEqual(otel.GetTracerProvider(), originalTracerProvider) {
+		t.Error("expected tracer provider to be restored on shutdown")
+	}
+
+	if !reflect.DeepEqual(otel.GetMeterProvider(), originalMeterProvider) {
+		t.Error("expected meter provider to be restored on shutdown")
+	}
+
+	if _, ok := otel.GetTextMapPropagator().(testPropagator); !ok {
+		t.Error("expected text map propagator to be restored on shutdown")
+	}
 }
 
 func TestT_FailNow(t *testing.T) {
