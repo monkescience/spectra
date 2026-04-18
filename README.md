@@ -1,6 +1,7 @@
 # spectra
 
-OpenTelemetry instrumentation for Go tests. Make your tests observable and traceable.
+OpenTelemetry instrumentation for Go tests. Make your tests observable and
+traceable by streaming spans, metrics, and log events to any OTLP collector.
 
 ## Features
 
@@ -11,36 +12,38 @@ OpenTelemetry instrumentation for Go tests. Make your tests observable and trace
 - Manual span creation for operations under test
 - OTLP export to any compatible collector
 
-## Breaking Changes in v2
-
-**v2 introduces a new dependency injection API that requires code changes:**
-
-- `spectra.Init()` now returns `(*Spectra, error)` instead of `(func(), error)`
-- Call `sp.Shutdown()` instead of `shutdown()` for cleanup
-- `spectra.New(t)` is now `sp.New(t)` and returns `(*T, error)` instead of `*T`
-- Must check error from `sp.New(t)` before using the returned `*T`
-- OTEL global providers (`otel.SetTracerProvider`, `otel.SetMeterProvider`,
-  `otel.SetTextMapPropagator`) are no longer mutated by default. Pass
-  `spectra.WithSetGlobalProviders()` to opt in to the previous behavior.
-
-See the usage examples below for the new patterns.
-
 ## Installation
 
 ```bash
 go get github.com/monkescience/spectra
 ```
 
-## Usage
+## Quick start
 
-### Initialize in TestMain
+Initialize once in `TestMain`, then wrap each test with `sp.New(t)`. The
+examples below assume a package-level `sp *spectra.Spectra` so every test in
+the package can use it.
 
 ```go
+package mypkg_test
+
+import (
+    "log"
+    "os"
+    "testing"
+
+    "github.com/monkescience/spectra"
+)
+
+var sp *spectra.Spectra
+
 func TestMain(m *testing.M) {
-    sp, err := spectra.Init(
+    var err error
+
+    sp, err = spectra.Init(
         spectra.WithServiceName("my-service-tests"),
         spectra.WithEndpoint("grpc://localhost:4317"),
-        spectra.WithInsecure(), // skip TLS verification
+        spectra.WithInsecure(), // skip TLS verification for local collectors
     )
     if err != nil {
         log.Fatalf("spectra init: %v", err)
@@ -51,7 +54,9 @@ func TestMain(m *testing.M) {
 }
 ```
 
-### Wrap Tests
+## Usage
+
+### Wrap a test
 
 ```go
 func TestFeature(t *testing.T) {
@@ -60,10 +65,10 @@ func TestFeature(t *testing.T) {
         t.Fatalf("spectra: %v", err)
     }
 
-    // Logs are captured as span events
+    // Logs become span events
     st.Log("starting test")
 
-    // Add custom attributes
+    // Add custom attributes to the test span
     st.SetAttributes(attribute.String("feature", "login"))
 
     // Subtests become child spans
@@ -73,7 +78,7 @@ func TestFeature(t *testing.T) {
 }
 ```
 
-### Trace Operations Under Test
+### Trace operations under test
 
 ```go
 func TestDatabaseQuery(t *testing.T) {
@@ -82,16 +87,18 @@ func TestDatabaseQuery(t *testing.T) {
         t.Fatalf("spectra: %v", err)
     }
 
-    // Create child span for the operation you're testing
+    // Create a child span for the operation you're testing
     ctx, span := st.StartSpan("db-query")
     defer span.End()
 
-    result, err := db.Query(ctx, "SELECT ...")
-    require.NoError(t, err)
+    _, err = db.Query(ctx, "SELECT ...")
+    if err != nil {
+        t.Fatalf("query: %v", err)
+    }
 }
 ```
 
-### Setup and Teardown
+### Setup and teardown
 
 ```go
 func TestWithFixtures(t *testing.T) {
@@ -116,12 +123,26 @@ func TestWithFixtures(t *testing.T) {
 }
 ```
 
+### Install as OTEL globals (opt-in)
+
+By default, spectra keeps its providers local so it does not interfere with
+code under test that reads `otel.GetTracerProvider()`. If your code *relies*
+on the global providers being spectra's, opt in:
+
+```go
+sp, err := spectra.Init(
+    spectra.WithServiceName("my-service-tests"),
+    spectra.WithEndpoint("grpc://localhost:4317"),
+    spectra.WithSetGlobalProviders(), // previous globals are restored on Shutdown
+)
+```
+
 ## Configuration
 
 | Option | Description |
-|--------|-------------|
-| `WithServiceName(name)` | Service name for telemetry (required) |
-| `WithEndpoint(endpoint)` | OTLP collector endpoint with scheme (required) |
+|---|---|
+| `WithServiceName(name)` | Service name for telemetry (**required**) |
+| `WithEndpoint(endpoint)` | OTLP collector endpoint with scheme (**required**) |
 | `WithInsecure()` | gRPC: disable TLS; HTTPS: skip cert verification |
 | `WithShutdownTimeout(d)` | Graceful shutdown timeout (default: 5s) |
 | `WithLogger(logger)` | `*slog.Logger` for spectra's own operational messages (default: `slog.Default()`) |
@@ -131,23 +152,27 @@ func TestWithFixtures(t *testing.T) {
 | `WithoutMetrics()` | Disable metrics collection |
 | `WithoutLogs()` | Disable log capture as span events |
 
-### Endpoint Format
+### Endpoint format
 
-The endpoint must include a scheme:
+The endpoint **must** include a scheme:
 
 | Scheme | Protocol | TLS |
-|--------|----------|-----|
-| `grpc://host:port` | gRPC | Yes (use `WithInsecure()` to disable) |
+|---|---|---|
+| `grpc://host:port` | gRPC | Yes — use `WithInsecure()` to disable |
 | `http://host:port` | HTTP | No |
-| `https://host:port` | HTTPS | Yes (use `WithInsecure()` to skip cert verification) |
+| `https://host:port` | HTTPS | Yes — use `WithInsecure()` to skip cert verification |
 
-## Error Handling
+## Error handling
 
-Spectra returns errors in the following cases:
+Spectra surfaces a small set of sentinel errors you can branch on with
+`errors.Is`:
 
 | Error | When | Resolution |
-|-------|------|------------|
-| `ErrNotInitialized` | `sp.New(t)` called before `spectra.Init()` or on nil Spectra | Call `spectra.Init()` in `TestMain` first |
+|---|---|---|
+| `ErrMissingServiceName` | `spectra.Init` called without `WithServiceName` | Pass `WithServiceName("…")` |
+| `ErrMissingEndpoint` | `spectra.Init` called without `WithEndpoint` | Pass `WithEndpoint("grpc://…")` |
+| `ErrInvalidEndpoint` | Endpoint missing a scheme | Use `grpc://`, `http://`, or `https://` |
+| `ErrNotInitialized` | `sp.New(t)` called before `spectra.Init()` or on a nil `*Spectra` | Call `spectra.Init()` in `TestMain` first |
 | `ErrAlreadyShutdown` | Operations attempted after `sp.Shutdown()` | Ensure tests run before shutdown |
 
 ## Telemetry
