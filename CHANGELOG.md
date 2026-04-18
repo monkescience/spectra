@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.3.0](https://github.com/monkescience/spectra/compare/v0.2.0...v0.3.0) (2026-04-18)
+
+### ⚠ BREAKING CHANGES
+
+- migrate release pipeline from release-please to yeet ([b15aa7d](https://github.com/monkescience/spectra/commit/b15aa7d65b9492f0c89e14b13fb0d4fe86fa9c1e))
+- make OTEL global provider registration opt-in ([d7722ef](https://github.com/monkescience/spectra/commit/d7722ef09971737a66c33412bff5c116d1b98ffd))
+### Features
+
+- make OTEL global provider registration opt-in ([d7722ef](https://github.com/monkescience/spectra/commit/d7722ef09971737a66c33412bff5c116d1b98ffd))
+- add WithLogger option, use slog for shutdown errors ([87ab4fe](https://github.com/monkescience/spectra/commit/87ab4fe38b8c10ac3f663d879a81fc9276144559))
+
 ## [0.2.0](https://github.com/monkescience/spectra/compare/v0.1.0...v0.2.0) (2026-04-18)
 
 
