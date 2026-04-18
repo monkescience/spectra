@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -76,6 +77,9 @@ type config struct {
 
 	// TracerProvider overrides the default trace provider.
 	TracerProvider trace.TracerProvider
+
+	// Logger is used for spectra's own operational messages. Defaults to slog.Default().
+	Logger *slog.Logger
 
 	// ShutdownTimeout is the timeout for graceful shutdown.
 	// Defaults to 5 seconds.
@@ -340,6 +344,10 @@ func validateConfig(cfg config) (config, error) {
 
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = defaultShutdownTimeout
+	}
+
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
 	}
 
 	return cfg, nil

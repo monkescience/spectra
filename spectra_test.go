@@ -1,8 +1,10 @@
 package spectra_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"reflect"
 	"testing"
 
@@ -1250,5 +1252,36 @@ func TestT_SkipNow(t *testing.T) {
 
 	if !mock.skipped {
 		t.Error("expected mock.skipped to be true after SkipNow()")
+	}
+}
+
+func TestInit_WithLogger_RoutesShutdownErrors(t *testing.T) {
+	// given
+	var buf bytes.Buffer
+
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	sp, err := spectra.Init(
+		spectra.WithServiceName("test"),
+		spectra.WithEndpoint("grpc://127.0.0.1:4317"),
+		spectra.WithInsecure(),
+		spectra.WithLogger(logger),
+		spectra.WithShutdownTimeout(100_000_000), // 100ms
+	)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// when
+	sp.Shutdown()
+
+	// then — shutdown against a non-listening endpoint must surface via slog
+	output := buf.String()
+	if len(output) == 0 {
+		t.Fatal("expected shutdown errors to be logged via WithLogger")
+	}
+
+	if !bytes.Contains(buf.Bytes(), []byte("spectra shutdown failed")) {
+		t.Errorf("expected 'spectra shutdown failed' in logger output, got %q", output)
 	}
 }

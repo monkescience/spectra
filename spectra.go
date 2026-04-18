@@ -5,7 +5,7 @@ package spectra
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -71,14 +71,20 @@ func (s *Spectra) Shutdown() {
 		if s.tracerProvider != nil {
 			err := s.tracerProvider.Shutdown(ctx)
 			if err != nil {
-				log.Printf("spectra: failed to shutdown tracer provider: %v", err)
+				s.config.Logger.ErrorContext(ctx, "spectra shutdown failed",
+					slog.String("component", "tracer_provider"),
+					slog.Any("error", err),
+				)
 			}
 		}
 
 		if s.meterProvider != nil {
 			err := s.meterProvider.Shutdown(ctx)
 			if err != nil {
-				log.Printf("spectra: failed to shutdown meter provider: %v", err)
+				s.config.Logger.ErrorContext(ctx, "spectra shutdown failed",
+					slog.String("component", "meter_provider"),
+					slog.Any("error", err),
+				)
 			}
 		}
 

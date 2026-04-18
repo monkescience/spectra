@@ -1,6 +1,7 @@
 package spectra
 
 import (
+	"log/slog"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -8,6 +9,14 @@ import (
 
 // Option configures spectra initialization.
 type Option func(*config)
+
+// WithLogger sets the slog.Logger used for spectra's own operational messages
+// (e.g. shutdown failures). Defaults to slog.Default().
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *config) {
+		c.Logger = logger
+	}
+}
 
 // WithServiceName sets the service name for telemetry. Required.
 func WithServiceName(name string) Option {
