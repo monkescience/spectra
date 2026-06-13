@@ -96,7 +96,7 @@ type config struct {
 	DisableLogs bool
 
 	// SetGlobalProviders installs spectra's providers as OTEL globals.
-	// Off by default; opt-in via WithSetGlobalProviders.
+	// Off by default. Opt-in via WithSetGlobalProviders.
 	SetGlobalProviders bool
 }
 
@@ -237,7 +237,6 @@ func createResource(cfg config) (*resource.Resource, error) {
 		context.Background(),
 		resource.WithAttributes(
 			semconv.ServiceName(cfg.ServiceName),
-			semconv.ServiceVersion("test"),
 		),
 		resource.WithFromEnv(),
 		resource.WithTelemetrySDK(),
