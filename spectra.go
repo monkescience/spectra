@@ -96,8 +96,12 @@ func (s *Spectra) Shutdown() {
 
 // T wraps testing.TB with OpenTelemetry instrumentation.
 // It creates spans for test execution, captures logs, and records metrics.
+// T embeds testing.TB, so it satisfies testing.TB and can be passed anywhere a
+// testing.TB is expected. The logging and lifecycle methods are overridden to
+// add instrumentation. Every other method is promoted from the wrapped TB.
 type T struct {
-	tb      testing.TB
+	testing.TB
+
 	ctx     context.Context //nolint:containedctx // Context is needed for span propagation in tests.
 	span    trace.Span
 	tracer  trace.Tracer
@@ -107,6 +111,8 @@ type T struct {
 	failed    bool
 	startTime time.Time
 }
+
+var _ testing.TB = (*T)(nil)
 
 func determineSubtestStatus(tb testing.TB) (codes.Code, string) {
 	tb.Helper()
@@ -153,7 +159,7 @@ func (s *Spectra) New(tb testing.TB) (*T, error) {
 	)
 
 	t := &T{
-		tb:        tb,
+		TB:        tb,
 		ctx:       ctx,
 		span:      span,
 		tracer:    tracer,
@@ -173,21 +179,6 @@ func (s *Spectra) New(tb testing.TB) (*T, error) {
 	})
 
 	return t, nil
-}
-
-// Name returns the name of the test.
-func (t *T) Name() string {
-	return t.tb.Name()
-}
-
-// Helper marks the calling function as a test helper function.
-func (t *T) Helper() {
-	t.tb.Helper()
-}
-
-// Cleanup registers a function to be called when the test completes.
-func (t *T) Cleanup(f func()) {
-	t.tb.Cleanup(f)
 }
 
 // Context returns the context associated with this test's span.
@@ -213,7 +204,7 @@ func (t *T) AddEvent(name string, attrs ...attribute.KeyValue) {
 // Log logs a message and records it as a span event.
 func (t *T) Log(args ...any) {
 	t.Helper()
-	t.tb.Log(args...)
+	t.TB.Log(args...)
 
 	t.recordLog(formatArgs(args...), levelInfo)
 }
@@ -221,7 +212,7 @@ func (t *T) Log(args ...any) {
 // Logf logs a formatted message and records it as a span event.
 func (t *T) Logf(format string, args ...any) {
 	t.Helper()
-	t.tb.Logf(format, args...)
+	t.TB.Logf(format, args...)
 
 	t.recordLog(formatf(format, args...), levelInfo)
 }
@@ -232,7 +223,7 @@ func (t *T) Error(args ...any) {
 
 	t.setFailed()
 
-	t.tb.Error(args...)
+	t.TB.Error(args...)
 
 	t.recordLog(formatArgs(args...), levelError)
 }
@@ -243,7 +234,7 @@ func (t *T) Errorf(format string, args ...any) {
 
 	t.setFailed()
 
-	t.tb.Errorf(format, args...)
+	t.TB.Errorf(format, args...)
 
 	t.recordLog(formatf(format, args...), levelError)
 }
@@ -257,7 +248,7 @@ func (t *T) Fatal(args ...any) {
 	t.recordLog(formatArgs(args...), levelFatal)
 
 	t.span.SetStatus(codes.Error, "test fatal")
-	t.tb.Fatal(args...)
+	t.TB.Fatal(args...)
 }
 
 // Fatalf logs a formatted fatal error and records it as a span event.
@@ -269,7 +260,7 @@ func (t *T) Fatalf(format string, args ...any) {
 	t.recordLog(formatf(format, args...), levelFatal)
 
 	t.span.SetStatus(codes.Error, "test fatal")
-	t.tb.Fatalf(format, args...)
+	t.TB.Fatalf(format, args...)
 }
 
 // Skip logs a skip message and records it as a span event.
@@ -279,7 +270,7 @@ func (t *T) Skip(args ...any) {
 	t.recordLog(formatArgs(args...), levelSkip)
 
 	t.span.SetStatus(codes.Ok, "test skipped")
-	t.tb.Skip(args...)
+	t.TB.Skip(args...)
 }
 
 // Skipf logs a formatted skip message and records it as a span event.
@@ -289,7 +280,7 @@ func (t *T) Skipf(format string, args ...any) {
 	t.recordLog(formatf(format, args...), levelSkip)
 
 	t.span.SetStatus(codes.Ok, "test skipped")
-	t.tb.Skipf(format, args...)
+	t.TB.Skipf(format, args...)
 }
 
 // FailNow marks the test as failed and stops its execution.
@@ -301,7 +292,7 @@ func (t *T) FailNow() {
 	t.recordLog("test failed", levelFatal)
 
 	t.span.SetStatus(codes.Error, "test failed")
-	t.tb.FailNow()
+	t.TB.FailNow()
 }
 
 // SkipNow marks the test as skipped and stops its execution.
@@ -311,7 +302,7 @@ func (t *T) SkipNow() {
 	t.recordLog("test skipped", levelSkip)
 
 	t.span.SetStatus(codes.Ok, "test skipped")
-	t.tb.SkipNow()
+	t.TB.SkipNow()
 }
 
 func (t *T) setFailed() {
@@ -341,9 +332,9 @@ func (t *T) recordLog(message, level string) {
 
 func (t *T) determineStatus() (codes.Code, string, string) {
 	switch {
-	case t.hasFailed() || t.tb.Failed():
+	case t.hasFailed() || t.Failed():
 		return codes.Error, "test failed", statusFail
-	case t.tb.Skipped():
+	case t.Skipped():
 		return codes.Ok, "test skipped", statusSkip
 	default:
 		return codes.Ok, "test passed", statusPass

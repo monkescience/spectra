@@ -7,13 +7,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Run runs a subtest with its own span as a child of the current test span.
-// For parallel tests (when t.Parallel() is called), the subtest span is linked
-// to the parent span rather than being a direct child.
+// Run runs a subtest with its own span as a direct child of the current test
+// span. The parent-child span relationship holds even when the subtest calls
+// Parallel.
 func (t *T) Run(name string, f func(*T)) bool {
 	t.Helper()
 
-	tt, ok := t.tb.(*testing.T)
+	tt, ok := t.TB.(*testing.T)
 	if !ok {
 		t.Fatal("spectra: Run() requires *testing.T, not *testing.B")
 
@@ -33,7 +33,7 @@ func (t *T) Run(name string, f func(*T)) bool {
 		)
 
 		st := &T{
-			tb:      innerT,
+			TB:      innerT,
 			ctx:     ctx,
 			span:    span,
 			tracer:  t.tracer,
@@ -51,21 +51,19 @@ func (t *T) Run(name string, f func(*T)) bool {
 	})
 }
 
-// Parallel marks the test as capable of running in parallel.
-// When parallel is used, the span relationship is preserved via span links
-// rather than parent-child relationships.
+// Parallel signals that this test is to be run in parallel with (and only
+// with) other parallel tests, delegating to the underlying *testing.T. It
+// records a "parallel" event on the test span to mark the transition and is a
+// no-op for benchmarks. The subtest span remains a direct child of its parent.
 func (t *T) Parallel() {
 	t.Helper()
 
-	tt, ok := t.tb.(*testing.T)
+	tt, ok := t.TB.(*testing.T)
 	if !ok {
 		return
 	}
 
-	// Add link to parent span before going parallel.
-	t.span.AddEvent("parallel", trace.WithAttributes(
-		attribute.String("parent.trace_id", t.span.SpanContext().TraceID().String()),
-	))
+	t.span.AddEvent("parallel")
 
 	tt.Parallel()
 }

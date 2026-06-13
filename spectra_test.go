@@ -1310,6 +1310,33 @@ func TestT_SkipNow(t *testing.T) {
 	}
 }
 
+func TestT_ImplementsTestingTB(t *testing.T) {
+	// Tests modify global tracer provider - cannot run in parallel.
+
+	// given: a spectra test wrapper around a mock testing.TB
+	_, sp := setupTestTracer(t)
+	mock := newMockTB("TestT_ImplementsTestingTB")
+
+	st, err := sp.New(mock)
+	if err != nil {
+		t.Fatalf("failed to create test: %v", err)
+	}
+
+	// when: the wrapper is used through the testing.TB interface
+	var tb testing.TB = st
+
+	if tb.Failed() {
+		t.Error("expected a fresh test not to be failed")
+	}
+
+	tb.Error("boom")
+
+	// then: promoted testing.TB methods reflect the wrapped state
+	if !tb.Failed() {
+		t.Error("expected Failed() to report the failure recorded via Error()")
+	}
+}
+
 func TestInit_WithLogger_RoutesShutdownErrors(t *testing.T) {
 	// given: a spectra instance configured with a custom slog.Logger and a dead endpoint
 	var buf bytes.Buffer
