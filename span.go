@@ -13,7 +13,10 @@ import (
 // Example:
 //
 //	func TestDatabaseQuery(t *testing.T) {
-//	    st := spectra.New(t)
+//	    st, err := sp.New(t)
+//	    if err != nil {
+//	        t.Fatalf("spectra: %v", err)
+//	    }
 //	    ctx, span := st.StartSpan("db-query")
 //	    defer span.End()
 //	    result, err := db.Query(ctx, "SELECT ...")
@@ -30,7 +33,10 @@ func (t *T) StartSpan(name string, opts ...trace.SpanStartOption) (context.Conte
 // Example:
 //
 //	func TestWithFixtures(t *testing.T) {
-//	    st := spectra.New(t)
+//	    st, err := sp.New(t)
+//	    if err != nil {
+//	        t.Fatalf("spectra: %v", err)
+//	    }
 //	    st.Setup(func(ctx context.Context) {
 //	        seedDatabase(ctx)
 //	    })
@@ -56,7 +62,10 @@ func (t *T) Setup(fn func(ctx context.Context)) {
 // Example:
 //
 //	func TestWithFixtures(t *testing.T) {
-//	    st := spectra.New(t)
+//	    st, err := sp.New(t)
+//	    if err != nil {
+//	        t.Fatalf("spectra: %v", err)
+//	    }
 //	    st.Teardown(func(ctx context.Context) {
 //	        cleanupDatabase(ctx)
 //	    })
