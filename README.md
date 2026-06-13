@@ -143,7 +143,7 @@ sp, err := spectra.Init(
 |---|---|
 | `WithServiceName(name)` | Service name for telemetry (**required**) |
 | `WithEndpoint(endpoint)` | OTLP collector endpoint with scheme (**required**) |
-| `WithInsecure()` | gRPC: disable TLS; HTTPS: skip cert verification |
+| `WithInsecure()` | gRPC: disable TLS. HTTPS: skip cert verification |
 | `WithShutdownTimeout(d)` | Graceful shutdown timeout (default: 5s) |
 | `WithLogger(logger)` | `*slog.Logger` for spectra's own operational messages (default: `slog.Default()`) |
 | `WithTracerProvider(tp)` | Use an existing `trace.TracerProvider` instead of creating one |
@@ -158,9 +158,9 @@ The endpoint **must** include a scheme:
 
 | Scheme | Protocol | TLS |
 |---|---|---|
-| `grpc://host:port` | gRPC | Yes — use `WithInsecure()` to disable |
+| `grpc://host:port` | gRPC | Yes, use `WithInsecure()` to disable |
 | `http://host:port` | HTTP | No |
-| `https://host:port` | HTTPS | Yes — use `WithInsecure()` to skip cert verification |
+| `https://host:port` | HTTPS | Yes, use `WithInsecure()` to skip cert verification |
 
 ## Error handling
 

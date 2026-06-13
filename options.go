@@ -77,7 +77,7 @@ func WithoutLogs() Option {
 }
 
 // WithSetGlobalProviders installs spectra's tracer, meter, and propagator as
-// the OTEL global providers. Off by default — libraries should not mutate
+// the OTEL global providers. Off by default. Libraries should not mutate
 // global state unless the consumer explicitly opts in. When enabled, the
 // previous globals are restored on Shutdown.
 func WithSetGlobalProviders() Option {
