@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -137,8 +138,8 @@ func Init(opts ...Option) (*Spectra, error) {
 
 	restoreGlobals := make([]func(), 0)
 	sp.restoreGlobals = func() {
-		for i := len(restoreGlobals) - 1; i >= 0; i-- {
-			restoreGlobals[i]()
+		for _, restore := range slices.Backward(restoreGlobals) {
+			restore()
 		}
 	}
 
@@ -150,15 +151,13 @@ func Init(opts ...Option) (*Spectra, error) {
 	}
 
 	if !cfg.DisableTraces {
-		err = configureTracing(ctx, cfg, res, sp, &restoreGlobals)
-		if err != nil {
+		if err := configureTracing(ctx, cfg, res, sp, &restoreGlobals); err != nil {
 			return nil, err
 		}
 	}
 
 	if !cfg.DisableMetrics {
-		err = configureMetrics(ctx, cfg, res, sp, &restoreGlobals)
-		if err != nil {
+		if err := configureMetrics(ctx, cfg, res, sp, &restoreGlobals); err != nil {
 			sp.Shutdown()
 
 			return nil, err
@@ -221,8 +220,7 @@ func configureMetrics(
 
 	sp.meterProvider = mp
 
-	err = sp.initMetrics()
-	if err != nil {
+	if err := sp.initMetrics(); err != nil {
 		return fmt.Errorf("init metrics: %w", err)
 	}
 

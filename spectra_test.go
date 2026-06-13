@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/monkescience/spectra"
@@ -79,8 +80,8 @@ func (m *mockTB) Fail()                     { m.failed = true }
 func (m *mockTB) SkipNow()                  { m.skipped = true }
 
 func (m *mockTB) runCleanups() {
-	for i := len(m.cleanups) - 1; i >= 0; i-- {
-		m.cleanups[i]()
+	for _, cleanup := range slices.Backward(m.cleanups) {
+		cleanup()
 	}
 }
 
@@ -553,11 +554,13 @@ func TestT_Error(t *testing.T) {
 	errorEvents := 0
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "level" && attr.Value.AsString() == "error" {
-					errorEvents++
-				}
+		if event.Name != "log" {
+			continue
+		}
+
+		for _, attr := range event.Attributes {
+			if attr.Key == "level" && attr.Value.AsString() == "error" {
+				errorEvents++
 			}
 		}
 	}
@@ -603,11 +606,13 @@ func TestT_Fatal(t *testing.T) {
 	fatalFound := false
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "level" && attr.Value.AsString() == "fatal" {
-					fatalFound = true
-				}
+		if event.Name != "log" {
+			continue
+		}
+
+		for _, attr := range event.Attributes {
+			if attr.Key == "level" && attr.Value.AsString() == "fatal" {
+				fatalFound = true
 			}
 		}
 	}
@@ -653,11 +658,13 @@ func TestT_Fatalf(t *testing.T) {
 	fatalFound := false
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "level" && attr.Value.AsString() == "fatal" {
-					fatalFound = true
-				}
+		if event.Name != "log" {
+			continue
+		}
+
+		for _, attr := range event.Attributes {
+			if attr.Key == "level" && attr.Value.AsString() == "fatal" {
+				fatalFound = true
 			}
 		}
 	}
@@ -699,11 +706,13 @@ func TestT_Skip(t *testing.T) {
 	skipFound := false
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "level" && attr.Value.AsString() == "skip" {
-					skipFound = true
-				}
+		if event.Name != "log" {
+			continue
+		}
+
+		for _, attr := range event.Attributes {
+			if attr.Key == "level" && attr.Value.AsString() == "skip" {
+				skipFound = true
 			}
 		}
 	}
@@ -749,11 +758,13 @@ func TestT_Skipf(t *testing.T) {
 	skipFound := false
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "level" && attr.Value.AsString() == "skip" {
-					skipFound = true
-				}
+		if event.Name != "log" {
+			continue
+		}
+
+		for _, attr := range event.Attributes {
+			if attr.Key == "level" && attr.Value.AsString() == "skip" {
+				skipFound = true
 			}
 		}
 	}
@@ -1219,13 +1230,15 @@ func TestT_FailNow(t *testing.T) {
 	failNowFound := false
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "message" && attr.Value.AsString() == "test failed" {
-					failNowFound = true
+		if event.Name != "log" {
+			continue
+		}
 
-					break
-				}
+		for _, attr := range event.Attributes {
+			if attr.Key == "message" && attr.Value.AsString() == "test failed" {
+				failNowFound = true
+
+				break
 			}
 		}
 	}
@@ -1275,13 +1288,15 @@ func TestT_SkipNow(t *testing.T) {
 	skipNowFound := false
 
 	for _, event := range targetSpan.Events {
-		if event.Name == "log" {
-			for _, attr := range event.Attributes {
-				if attr.Key == "message" && attr.Value.AsString() == "test skipped" {
-					skipNowFound = true
+		if event.Name != "log" {
+			continue
+		}
 
-					break
-				}
+		for _, attr := range event.Attributes {
+			if attr.Key == "message" && attr.Value.AsString() == "test skipped" {
+				skipNowFound = true
+
+				break
 			}
 		}
 	}
