@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.3.1](https://github.com/monkescience/spectra/compare/v0.3.0...v0.3.1) (2026-09-04)
+
+### Features
+
+- **t:** embed testing.TB so the wrapper satisfies the interface ([2c533e7](https://github.com/monkescience/spectra/commit/2c533e721b6ba55f88e7b874de3f9178391e42f5))
+
+### Bug Fixes
+
+- **deps:** update opentelemetry-go monorepo to v1.45.0 (#67) ([30970a7](https://github.com/monkescience/spectra/commit/30970a7a3ade1bfbdf5315ea2e4c91c12e42c10a))
+- drop hardcoded service version from telemetry resource ([36e8c33](https://github.com/monkescience/spectra/commit/36e8c33dbfa0ade020457aa61903007596b90549))
+- **deps:** update opentelemetry-go monorepo to v1.44.0 (#50) ([f03303f](https://github.com/monkescience/spectra/commit/f03303fd552ae85996a573133e3cf8f9fd72a3f6))
+- **deps:** update opentelemetry-go monorepo to v1.43.0 (#36) ([749b179](https://github.com/monkescience/spectra/commit/749b179e1a5e1ec303252c5fe2bdd480b6fb09d7))
+
 ## [v0.3.0](https://github.com/monkescience/spectra/compare/v0.2.0...v0.3.0) (2026-04-18)
 
 ### ⚠ BREAKING CHANGES
