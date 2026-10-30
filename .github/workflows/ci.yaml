@@ -53,7 +53,7 @@ jobs:
           args: git --redact --exit-code 1 --report-format sarif --report-path gitleaks.sarif .
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks
@@ -71,7 +71,7 @@ jobs:
           args: fs --severity HIGH,CRITICAL --exit-code 1 --format sarif --output trivy-fs.sarif .
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
